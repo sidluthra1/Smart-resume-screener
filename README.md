@@ -1,1 +1,1 @@
-# Techsur-Solutions-Internship-Challenge
+# Smart Resume Screener
