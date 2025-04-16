@@ -1,88 +1,104 @@
-import React, { useEffect, useState } from "react";
+// src/pages/Dashboard.js
+import React, { useState, useEffect, useRef } from "react";
 import api from "../api/axios";
-import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
+    const [resumes, setResumes] = useState([]);
     const [file, setFile] = useState(null);
     const [candidateName, setCandidateName] = useState("");
-    const [resumes, setResumes] = useState([]);
     const [msg, setMsg] = useState("");
+    const fileInputRef = useRef(null);
 
-    const fetchResumes = async () => {
-        const res = await api.get("/resume/all");
-        setResumes(res.data);
+    // load all resumes on mount
+    useEffect(() => {
+        async function loadResumes() {
+            try {
+                const res = await api.get("/resume/all");
+                setResumes(res.data);
+            } catch (err) {
+                console.error("Failed to load resumes:", err);
+                setMsg("Failed to load resumes");
+            }
+        }
+        loadResumes();
+    }, []);
+
+    const handleFileChange = (e) => {
+        setFile(e.target.files[0]);
     };
-
-    useEffect(() => { fetchResumes(); }, []);
 
     const handleUpload = async (e) => {
         e.preventDefault();
-        if (!file) return;
-        const form = new FormData();
-        form.append("file", file);
-        form.append("candidateName", candidateName);
+        setMsg("");
+        if (!file || !candidateName.trim()) {
+            setMsg("Please select a file and enter a candidate name.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("candidateName", candidateName);
+
         try {
-            await api.post("/resume/upload", form, {
+            await api.post("/resume/upload", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
-            setMsg("Upload successful!");
-            setFile(null);
+            setMsg("Uploaded successfully!");
+            // refresh list
+            const all = await api.get("/resume/all");
+            setResumes(all.data);
+            // reset inputs
             setCandidateName("");
-            fetchResumes();
-        } catch (ex) {
-            setMsg("Upload failed: " + ex.response?.data?.message);
+            setFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        } catch (err) {
+            console.error("Upload error:", err);
+            const status = err.response?.status;
+            if (status === 403) {
+                setMsg("Upload forbidden: please log in again.");
+            } else {
+                setMsg(`Upload failed: ${err.response?.data || err.message}`);
+            }
         }
     };
 
     return (
-        <div className="p-8 max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold mb-6">Resume Dashboard</h1>
+        <div className="p-8">
+            <h1 className="text-2xl mb-4">Resume Dashboard</h1>
 
-            {/* Upload card */}
-            <form
-                onSubmit={handleUpload}
-                className="border p-6 rounded-lg mb-10 bg-white shadow"
-            >
-                <h2 className="text-xl font-semibold mb-4">Upload Resume</h2>
+            <form onSubmit={handleUpload} className="mb-6 space-y-2">
                 <input
-                    className="border p-2 w-full mb-3 rounded"
+                    ref={fileInputRef}
+                    type="file"
+                    onChange={handleFileChange}
+                    className="block"
+                />
+
+                <input
                     type="text"
                     placeholder="Candidate Name"
                     value={candidateName}
                     onChange={(e) => setCandidateName(e.target.value)}
-                    required
+                    className="border p-2 rounded w-64"
                 />
-                <input
-                    className="mb-4"
-                    type="file"
-                    accept=".pdf,.docx"
-                    onChange={(e) => setFile(e.target.files[0])}
-                    required
-                />
+
                 <button
-                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
                     type="submit"
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                 >
-                    Upload
+                    Upload Resume
                 </button>
-                {msg && <p className="mt-2 text-blue-600">{msg}</p>}
+
+                {msg && <p className="mt-2 text-red-600">{msg}</p>}
             </form>
 
-            {/* List resumes */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ul className="space-y-1">
                 {resumes.map((r) => (
-                    <div
-                        key={r.id}
-                        className="border p-4 rounded bg-gray-50 shadow-sm flex flex-col"
-                    >
-                        <span className="font-medium">{r.candidateName}</span>
-                        <span className="text-sm text-gray-500">{r.fileName}</span>
-                        <span className="text-xs text-gray-400 mt-auto">
-              {new Date(r.uploadDate).toLocaleString()}
-            </span>
-                    </div>
+                    <li key={r.id}>
+                        <strong>{r.candidateName}</strong> — {r.fileName}
+                    </li>
                 ))}
-            </div>
+            </ul>
         </div>
     );
 }

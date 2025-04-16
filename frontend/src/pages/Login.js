@@ -10,15 +10,14 @@ export default function Login() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setErr(null);
         try {
-            // send JSON body, not URL params
+            // send JSON body, not `params`
             const res = await api.post("/auth/login", { email, password });
+            // backend now returns { token: "…" }
             const token = res.data.token;
             localStorage.setItem("jwt", token);
             navigate("/dashboard");
         } catch (ex) {
-            console.error(ex);
             setErr("Invalid credentials");
         }
     };
