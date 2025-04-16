@@ -28,18 +28,24 @@ public class JwtFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain)
             throws ServletException, IOException {
+
+        // 1) Skip any /auth/* endpoints so signup/login aren’t blocked:
+        String path = request.getServletPath();
+        if (path.startsWith("/auth/")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        // 2) Otherwise, try to pull and validate the JWT:
         try {
             String token = extractTokenFromHeader(request);
             if (token != null) {
-                // Validate token and get username
                 String username = jwtUtil.validateTokenAndGetUsername(token);
 
-                // Build an Authentication object
                 UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(username, null, Collections.emptyList());
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                // Set the context
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         } catch (ExpiredJwtException ex) {
@@ -48,7 +54,6 @@ public class JwtFilter extends OncePerRequestFilter {
             System.out.println("JWT invalid: " + ex.getMessage());
         }
 
-        // Continue the filter chain
         filterChain.doFilter(request, response);
     }
 

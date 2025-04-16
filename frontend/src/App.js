@@ -1,25 +1,33 @@
-import logo from './logo.svg';
-import './App.css';
+// src/App.js
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import './App.css'; // you can swap this for './index.css' once Tailwind is wired up
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+// Protects routes by checking for a JWT in localStorage
+function PrivateRoute({ children }) {
+  const token = localStorage.getItem('jwt');
+  return token ? children : <Navigate to="/" replace />;
 }
 
-export default App;
+export default function App() {
+  return (
+      <BrowserRouter>
+        <Routes>
+          {/* Public login page */}
+          <Route path="/" element={<Login />} />
+
+          {/* Dashboard is protected */}
+          <Route
+              path="/dashboard"
+              element={
+                <PrivateRoute>
+                  <Dashboard />
+                </PrivateRoute>
+              }
+          />
+        </Routes>
+      </BrowserRouter>
+  );
+}

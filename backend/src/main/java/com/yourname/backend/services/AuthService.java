@@ -1,6 +1,7 @@
 package com.yourname.backend.services;
 
 import com.yourname.backend.entities.User;
+import com.yourname.backend.exceptions.DuplicateUserException;
 import com.yourname.backend.repositories.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,16 +19,11 @@ public class AuthService {
     private PasswordEncoder passwordEncoder;
 
     public User registerUser(String email, String rawPassword, String role) {
-        // Check if user already exists
         Optional<User> existingUser = userRepository.findByEmail(email);
         if (existingUser.isPresent()) {
-            throw new RuntimeException("User with this email already exists.");
+            throw new DuplicateUserException("User already exists");
         }
-
-        // Encode the password
         String encodedPassword = passwordEncoder.encode(rawPassword);
-
-        // Create and save the user
         User user = new User(email, encodedPassword, role);
         return userRepository.save(user);
     }

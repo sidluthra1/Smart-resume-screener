@@ -1,48 +1,57 @@
 package com.yourname.backend.controllers;
 
 import com.yourname.backend.entities.User;
+import com.yourname.backend.exceptions.DuplicateUserException;
 import com.yourname.backend.services.AuthService;
 import com.yourname.backend.util.JwtUtil;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
 
-    @Autowired
-    private AuthService authService;
+    private final AuthService authService;
+    private final JwtUtil jwtUtil;
 
-    @Autowired
-    private JwtUtil jwtUtil;
+    public AuthController(AuthService authService, JwtUtil jwtUtil) {
+        this.authService = authService;
+        this.jwtUtil = jwtUtil;
+    }
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    // simple DTO for both signup and login
+    public static class AuthRequest {
+        public String email;
+        public String password;
+    }
+
+    public static class AuthResponse {
+        public String token;
+        public AuthResponse(String token) { this.token = token; }
+    }
 
     @PostMapping("/signup")
-    public String signup(@RequestParam("email") String email, @RequestParam("password") String password) {
+    public ResponseEntity<?> signup(@RequestBody AuthRequest req) {
         try {
-            User newUser = authService.registerUser(email, password, "HR");
-            return "User created with ID: " + newUser.getId();
-        } catch (RuntimeException e) {
-            return "Error: " + e.getMessage();
+            User u = authService.registerUser(req.email, req.password, "HR");
+            return ResponseEntity.ok("User created with ID: " + u.getId());
+        } catch (DuplicateUserException e) {
+            // now you’ll see a 400 and the exception message
+            return ResponseEntity
+                    .badRequest()
+                    .body(e.getMessage());
         }
     }
 
     @PostMapping("/login")
-    public String login(@RequestParam("email") String email, @RequestParam("password") String password) {
-        User user = authService.findUserByEmail(email);
-        if (user == null) {
-            return "Error: User not found";
+    public ResponseEntity<?> login(@RequestBody AuthRequest req) {
+        User user = authService.findUserByEmail(req.email);
+        if (user == null || !authService.checkPassword(user, req.password)) {
+            return ResponseEntity
+                    .status(401)
+                    .body("Error: Invalid credentials");
         }
-
-        boolean valid = authService.checkPassword(user, password);
-        if (!valid) {
-            return "Error: Invalid credentials";
-        }
-
-        String token = jwtUtil.generateToken(email);
-        return "JWT Token: " + token;
+        String token = jwtUtil.generateToken(user.getEmail());
+        return ResponseEntity.ok(new AuthResponse(token));
     }
 }

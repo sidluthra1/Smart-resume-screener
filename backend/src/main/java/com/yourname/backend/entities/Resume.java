@@ -18,6 +18,13 @@ public class Resume {
 
     private String filePath;
 
+    @Column(nullable = false)
+    private String contentType;
+
+    @Column(nullable = false)
+    private long size;
+
+
     public Resume() {
     }
 
@@ -57,5 +64,17 @@ public class Resume {
     }
     public void setFilePath(String filePath) {
         this.filePath = filePath;
+    }
+    public String getContentType() {
+        return contentType;
+    }
+    public void setContentType(String contentType) {
+        this.contentType = contentType;
+    }
+    public long getSize() {
+        return size;
+    }
+    public void setSize(long size) {
+        this.size = size;
     }
 }
