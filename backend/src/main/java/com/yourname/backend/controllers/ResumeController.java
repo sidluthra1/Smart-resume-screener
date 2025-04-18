@@ -1,7 +1,10 @@
 package com.yourname.backend.controllers;
 
+import com.yourname.backend.entities.JobDescription;
 import com.yourname.backend.entities.Resume;
+import com.yourname.backend.repositories.JobDescriptionRepository;
 import com.yourname.backend.repositories.ResumeRepository;
+import com.yourname.backend.services.AiService;
 import com.yourname.backend.storage.StorageService;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +13,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 @RestController
@@ -18,27 +23,35 @@ import java.util.List;
 public class ResumeController {
 
     private final ResumeRepository resumeRepository;
+    private final JobDescriptionRepository jobRepo;
     private final StorageService storageService;
+    private final AiService aiService;
 
     @Autowired
-    public ResumeController(ResumeRepository resumeRepo, StorageService storageService) {
-        this.resumeRepository = resumeRepo;
+    public ResumeController(ResumeRepository resumeRepository,
+                            JobDescriptionRepository jobRepo,
+                            StorageService storageService,
+                            AiService aiService) {
+        this.resumeRepository = resumeRepository;
+        this.jobRepo = jobRepo;
         this.storageService = storageService;
+        this.aiService = aiService;
     }
 
     /**
-     * Uploads a resume file (PDF or DOCX) and stores its metadata in the database.
-     * @param file           the multipart file to upload
+     * Uploads a resume, scores it against the given job, and returns the saved Resume entity.
+     *
+     * @param file           the multipart file (PDF or DOCX)
      * @param candidateName  the name of the candidate
-     * @return the saved Resume entity
-     * @throws IOException if file storage fails
+     * @param jobId          the ID of the JobDescription to score against
      */
     @PostMapping(path = "/upload",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public Resume upload(@RequestPart("file") @NotNull MultipartFile file,
-                         @RequestPart("candidateName") @NotNull String candidateName)
-            throws IOException {
+                         @RequestPart("candidateName") @NotNull String candidateName,
+                         @RequestPart("jobId") @NotNull Long jobId)
+            throws IOException, InterruptedException {
 
         if (file.isEmpty()) {
             throw new IllegalArgumentException("File is empty");
@@ -50,24 +63,34 @@ public class ResumeController {
             throw new IllegalArgumentException("Only PDF or DOCX files are allowed");
         }
 
-        // Store the file on disk and get its path
-        String path = storageService.store(file);
+        // 1) Store resume on disk
+        String resumePath = storageService.store(file);
 
-        // Create and save the Resume entity
+        // 2) Create the Resume entity
         Resume resume = new Resume(
                 file.getOriginalFilename(),
                 candidateName,
-                path
+                resumePath
         );
         resume.setContentType(contentType);
         resume.setSize(file.getSize());
 
+        // 3) Lookup the job and dump its descriptionText to a temp .txt
+        JobDescription job = jobRepo.findById(jobId)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid jobId: " + jobId));
+        Path tempJob = Files.createTempFile("jobdesc-", ".txt");
+        Files.writeString(tempJob, job.getDescriptionText());
+
+        // 4) Shell out to Python, get a 0–100 score, persist it
+        double score = aiService.scoreResume(resumePath, tempJob.toString());
+        resume.setMatchScore(score);
+
+        // 5) Save and return
         return resumeRepository.save(resume);
     }
 
     /**
      * Retrieves all stored resumes.
-     * @return list of Resume entities
      */
     @GetMapping("/all")
     public List<Resume> list() {

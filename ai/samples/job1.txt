@@ -1,0 +1,22 @@
+Software Engineer, Smart Resume Screener
+
+We’re looking for a Software Engineer to join our growing product team and help us build out
+the Smart Resume Screener platform. You’ll work closely with our frontend, backend and AI
+engineers to deliver new features that make resume parsing and candidate matching as
+accurate—and as human—as possible.
+
+Responsibilities:
+- Design, implement and maintain RESTful APIs in Java (Spring Boot) for uploading resumes
+  and job descriptions.
+- Collaborate with frontend engineers building React/Tailwind interfaces.
+- Integrate a BERT‑based NLP pipeline for semantic matching between resumes and job text.
+- Write clean, well‑tested code; participate in code reviews and pair‑programming.
+- Help define and track metrics (match score accuracy, performance, coverage).
+
+Requirements:
+- Bachelor’s degree in Computer Science or equivalent practical experience.
+- 3+ years of professional Java/Spring Boot development.
+- Familiarity with Python for AI/ML scripting (e.g. using pdfplumber, python‑docx).
+- Experience with NLP concepts (semantic similarity, TF‑IDF, embeddings).
+- Strong problem‑solving skills and attention to detail.
+- Excellent communication and teamwork abilities.

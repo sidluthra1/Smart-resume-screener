@@ -24,6 +24,9 @@ public class Resume {
     @Column(nullable = false)
     private long size;
 
+    @Column(nullable = true)
+    private Double matchScore;
+
 
     public Resume() {
     }
@@ -76,5 +79,11 @@ public class Resume {
     }
     public void setSize(long size) {
         this.size = size;
+    }
+    public Double getMatchScore() {
+        return matchScore;
+    }
+    public void setMatchScore(Double matchScore) {
+        this.matchScore = matchScore;
     }
 }
