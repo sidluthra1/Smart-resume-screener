@@ -29,6 +29,8 @@ public class JwtFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
+        String bearer = request.getHeader("Authorization");
+        System.out.println(">> Authorization header = " + bearer);
         // 1) Skip any /auth/* endpoints so signup/login aren’t blocked:
         String path = request.getServletPath();
         if (path.startsWith("/auth/")) {

@@ -24,8 +24,8 @@ public class AiService {
         try (BufferedReader in = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
             String json = in.readLine();
             JsonNode node = MAPPER.readTree(json);
-            if (node.has("score")) {
-                return node.get("score").asDouble();
+            if (node.has("Match Score")) {
+                return node.get("Match Score").asDouble();
             } else {
                 throw new RuntimeException("AI error: " + node);
             }

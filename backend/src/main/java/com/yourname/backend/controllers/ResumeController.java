@@ -48,9 +48,9 @@ public class ResumeController {
     @PostMapping(path = "/upload",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public Resume upload(@RequestPart("file") @NotNull MultipartFile file,
-                         @RequestPart("candidateName") @NotNull String candidateName,
-                         @RequestPart("jobId") @NotNull Long jobId)
+    public Resume upload(@RequestParam("file") @NotNull MultipartFile file,
+                         @RequestParam("candidateName") @NotNull String candidateName,
+                         @RequestParam("jobId") @NotNull Long jobId)
             throws IOException, InterruptedException {
 
         if (file.isEmpty()) {
