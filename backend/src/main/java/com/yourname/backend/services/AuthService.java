@@ -21,7 +21,7 @@ public class AuthService {
     public User registerUser(String email, String rawPassword, String role) {
         Optional<User> existingUser = userRepository.findByEmail(email);
         if (existingUser.isPresent()) {
-            throw new DuplicateUserException("User already exists");
+            throw new DuplicateUserException("User already exists with email: " + email);
         }
         String encodedPassword = passwordEncoder.encode(rawPassword);
         User user = new User(email, encodedPassword, role);

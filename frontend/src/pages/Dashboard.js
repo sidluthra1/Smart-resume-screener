@@ -3,25 +3,33 @@ import React, { useState, useEffect, useRef } from "react";
 import api from "../api/axios";
 
 export default function Dashboard() {
+    const [jobs, setJobs] = useState([]);
+    const [selectedJobId, setSelectedJobId] = useState("");
     const [resumes, setResumes] = useState([]);
     const [file, setFile] = useState(null);
     const [candidateName, setCandidateName] = useState("");
     const [msg, setMsg] = useState("");
     const fileInputRef = useRef(null);
 
-    // load all resumes on mount
+    // only fetch once we actually have a JWT
     useEffect(() => {
-        async function loadResumes() {
+        if (!localStorage.getItem("jwt")) return;
+
+        (async () => {
             try {
-                const res = await api.get("/resume/all");
-                setResumes(res.data);
+                const [jobsRes, resumesRes] = await Promise.all([
+                    api.get("/job/all"),
+                    api.get("/resume/all"),
+                ]);
+                setJobs(jobsRes.data);
+                // Sort resumes by score initially if available, otherwise keep original order
+                setResumes(resumesRes.data.sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1)));
             } catch (err) {
-                console.error("Failed to load resumes:", err);
-                setMsg("Failed to load resumes");
+                console.error(err);
+                setMsg("Failed to load jobs or resumes");
             }
-        }
-        loadResumes();
-    }, []);
+        })();
+    }, []); // Empty dependency array ensures this runs only once on mount
 
     const handleFileChange = (e) => {
         setFile(e.target.files[0]);
@@ -29,76 +37,140 @@ export default function Dashboard() {
 
     const handleUpload = async (e) => {
         e.preventDefault();
-        setMsg("");
-        if (!file || !candidateName.trim()) {
-            setMsg("Please select a file and enter a candidate name.");
+        setMsg(""); // Clear previous messages
+
+        if (!selectedJobId || !file || !candidateName.trim()) {
+            setMsg("Please select a job, pick a file, and enter a candidate name.");
             return;
         }
 
         const formData = new FormData();
         formData.append("file", file);
-        formData.append("candidateName", candidateName);
+        formData.append("candidateName", candidateName.trim());
+        formData.append("jobId", selectedJobId);
 
         try {
-            await api.post("/resume/upload", formData, {
-                headers: { "Content-Type": "multipart/form-data" },
-            });
-            setMsg("Uploaded successfully!");
+            // Let Axios/browser set the Content‑Type (with boundary) for you
+            await api.post("/resume/upload", formData);
+
+            setMsg("Uploaded & scored successfully!");
+
             // refresh list
-            const all = await api.get("/resume/all");
-            setResumes(all.data);
-            // reset inputs
+            const updatedResumes = await api.get("/resume/all");
+            // Sort updated list by score
+            setResumes(updatedResumes.data.sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1)));
+
+            // reset form
+            setSelectedJobId("");
             setCandidateName("");
             setFile(null);
-            if (fileInputRef.current) fileInputRef.current.value = "";
+            if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input visually
+
         } catch (err) {
-            console.error("Upload error:", err);
-            const status = err.response?.status;
-            if (status === 403) {
-                setMsg("Upload forbidden: please log in again.");
+            console.error(err);
+            // Check for specific HTTP status codes or error messages
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                setMsg("Upload forbidden: Your session may have expired. Please log in again.");
             } else {
-                setMsg(`Upload failed: ${err.response?.data || err.message}`);
+                // Display backend error message if available, otherwise generic message
+                setMsg(`Upload failed: ${err.response?.data?.message || err.response?.data || err.message}`);
             }
         }
     };
 
     return (
-        <div className="p-8">
-            <h1 className="text-2xl mb-4">Resume Dashboard</h1>
+        <div className="p-8 max-w-4xl mx-auto">
+            <h1 className="text-3xl font-bold mb-6 text-gray-800">Resume Dashboard</h1>
 
-            <form onSubmit={handleUpload} className="mb-6 space-y-2">
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    onChange={handleFileChange}
-                    className="block"
-                />
+            {/* Upload Form */}
+            <form onSubmit={handleUpload} className="mb-8 p-6 bg-white shadow rounded-lg border border-gray-200 space-y-4">
+                <h2 className="text-xl font-semibold text-gray-700 mb-4">Upload New Resume</h2>
+                <div>
+                    <label htmlFor="job-select" className="block mb-1 font-medium text-gray-700">Select Job:</label>
+                    <select
+                        id="job-select"
+                        value={selectedJobId}
+                        onChange={(e) => setSelectedJobId(e.target.value)}
+                        className="border p-2 rounded w-full focus:ring-blue-500 focus:border-blue-500"
+                        required
+                    >
+                        <option value="" disabled>-- pick a job --</option>
+                        {jobs.map((j) => (
+                            <option key={j.id} value={j.id}>
+                                {j.title}
+                            </option>
+                        ))}
+                    </select>
+                </div>
 
-                <input
-                    type="text"
-                    placeholder="Candidate Name"
-                    value={candidateName}
-                    onChange={(e) => setCandidateName(e.target.value)}
-                    className="border p-2 rounded w-64"
-                />
+                <div>
+                    <label htmlFor="candidate-name" className="block mb-1 font-medium text-gray-700">Candidate Name:</label>
+                    <input
+                        id="candidate-name"
+                        type="text"
+                        placeholder="Enter candidate name"
+                        value={candidateName}
+                        onChange={(e) => setCandidateName(e.target.value)}
+                        className="border p-2 rounded w-full focus:ring-blue-500 focus:border-blue-500"
+                        required
+                    />
+                </div>
+
+                <div>
+                    <label htmlFor="resume-file" className="block mb-1 font-medium text-gray-700">Resume File:</label>
+                    <input
+                        id="resume-file"
+                        ref={fileInputRef}
+                        type="file"
+                        onChange={handleFileChange}
+                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" // Specify accepted file types
+                        required
+                    />
+                </div>
 
                 <button
                     type="submit"
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-150 ease-in-out"
                 >
-                    Upload Resume
+                    Upload & Score
                 </button>
 
-                {msg && <p className="mt-2 text-red-600">{msg}</p>}
+                {/* Display status messages */}
+                {msg && <p className={`mt-3 p-3 rounded text-sm ${msg.includes("failed") || msg.includes("forbidden") ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{msg}</p>}
             </form>
 
-            <ul className="space-y-1">
-                {resumes.map((r) => (
-                    <li key={r.id}>
-                        <strong>{r.candidateName}</strong> — {r.fileName}
-                    </li>
-                ))}
-            </ul>
+            {/* Resumes List */}
+            <div>
+                <h2 className="text-2xl font-semibold mb-4 text-gray-800">Uploaded Resumes</h2>
+                {resumes.length > 0 ? (
+                    <ul className="space-y-3">
+                        {resumes.map((r) => (
+                            <li key={r.id} className="p-4 bg-white shadow rounded-lg border border-gray-200 flex justify-between items-center">
+                                <div>
+                                    <strong className="text-lg text-gray-700">{r.candidateName}</strong>
+                                    <span className="text-sm text-gray-500 ml-2">- {r.fileName}</span>
+                                </div>
+                                {r.matchScore != null ? (
+                                    <span className={`ml-4 px-3 py-1 rounded-full text-sm font-semibold ${
+                                        r.matchScore >= 75 ? 'bg-green-100 text-green-800' :
+                                            r.matchScore >= 50 ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-red-100 text-red-800'
+                                    }`}>
+                                         Score: {r.matchScore.toFixed(1)}%
+                                     </span>
+                                ) : (
+                                    <span className="ml-4 px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-600">
+                                         Not Scored
+                                     </span>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p className="text-gray-500">No resumes uploaded yet.</p>
+                )}
+            </div>
         </div>
     );
 }
