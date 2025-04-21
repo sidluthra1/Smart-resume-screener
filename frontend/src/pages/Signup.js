@@ -1,25 +1,37 @@
-// src/pages/Login.js
+// src/pages/Signup.js
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import logo from "../Resume Matcher Logo.png";
 
-export default function Login() {
-    const [email, setEmail]       = useState("");
-    const [password, setPassword] = useState("");
-    const [err, setErr]           = useState(null);
-    const navigate                = useNavigate();
+export default function Signup() {
+    const [name,        setName]        = useState("");
+    const [email,       setEmail]       = useState("");
+    const [password,    setPassword]    = useState("");
+    const [confirm,     setConfirm]     = useState("");
+    const [err,         setErr]         = useState(null);
+    const navigate                     = useNavigate();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setErr(null);
+
+        if (password !== confirm) {
+            setErr("Passwords do not match");
+            return;
+        }
+
         try {
+            await api.post("/auth/signup", { name, email, password });
+            // optional: auto‑login after signup
             const { data } = await api.post("/auth/login", { email, password });
             localStorage.setItem("jwt", data.token);
             navigate("/dashboard");
         } catch (ex) {
             const msg =
-                ex.response?.data?.message || ex.response?.data || "Invalid credentials.";
+                ex.response?.data?.message ||
+                ex.response?.data ||
+                "Signup failed. Try a different email.";
             setErr(msg);
         }
     };
@@ -35,7 +47,7 @@ export default function Login() {
 
             {/* subtitle -------------------------------------------------------- */}
             <p className="text-center text-sm text-gray-500 mb-6">
-                Login to access your account
+                Create an account to get started
             </p>
 
             {/* form ------------------------------------------------------------ */}
@@ -43,6 +55,15 @@ export default function Login() {
                 onSubmit={handleSubmit}
                 className="w-full max-w-sm mx-auto flex flex-col items-center space-y-4"
             >
+                <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    className="w-full rounded border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+
                 <input
                     type="email"
                     placeholder="Email"
@@ -61,36 +82,34 @@ export default function Login() {
                     className="w-full rounded border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
 
+                <input
+                    type="password"
+                    placeholder="Confirm Password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    required
+                    className="w-full rounded border px-3 py-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+
                 {err && <p className="text-xs text-red-500 text-center">{err}</p>}
 
-                {/* login button */}
+                {/* sign‑up button */}
                 <button
                     type="submit"
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded transition"
                 >
-                    Login
+                    Sign Up
                 </button>
             </form>
 
-            {/* links ----------------------------------------------------------- */}
-            <div className="mt-4 flex flex-col items-center space-y-2">
+            {/* link back to login --------------------------------------------- */}
+            <div className="mt-4 flex flex-col items-center">
                 <Link
-                    to="/signup"
-                    className="block text-xs text-blue-600 hover:text-blue-700 no-underline"
+                    to="/"
+                    className="text-xs text-blue-600 hover:text-blue-700 no-underline"
                 >
-                    Don&apos;t have an account? Sign&nbsp;Up
+                    Already have an account? Sign In
                 </Link>
-
-                <button
-                    type="button"
-                    className="block text-xs text-blue-500 hover:text-blue-600 no-underline"
-                    onClick={() => {
-                        setEmail("demo@example.com");
-                        setPassword("password");
-                    }}
-                >
-                    Use Demo Account
-                </button>
             </div>
         </div>
     );
