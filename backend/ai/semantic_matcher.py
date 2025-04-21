@@ -1,36 +1,69 @@
 #!/usr/bin/env python3
 
 import sys
-import re
+import re # Keep re for cleaning text
 import pdfplumber
 import docx
 import json
+from sentence_transformers import SentenceTransformer, util # Import necessary components
+import torch # Or tensorflow if you installed that backend
 
 
+# Keep the text extraction function as is, but add cleaning
 def extract_text(path):
     if path.lower().endswith(".pdf"):
         text = ""
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
-                txt = page.extract_text()
-                if txt:
-                    text += txt + "\n"
+                # Handle cases where extract_text might return None
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        # Simple cleaning: replace multiple whitespace chars with a single space
+        text = re.sub(r'\s+', ' ', text).strip()
         return text
     elif path.lower().endswith(".docx"):
-        doc = docx.Document(path)
-        return "\n".join(p.text for p in doc.paragraphs)
+        try:
+            doc = docx.Document(path)
+            full_text = [p.text for p in doc.paragraphs]
+            text = "\n".join(full_text)
+            # Simple cleaning: replace multiple whitespace chars with a single space
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text
+        except Exception as e:
+             # Handle potential errors reading corrupted docx files
+            raise ValueError(f"Error reading DOCX file: {path} - {e}")
     else:
         raise ValueError(f"Unsupported file type: {path}")
 
 
-def jaccard_score(a, b):
-    toks_a = set(re.findall(r"\w+", a.lower()))
-    toks_b = set(re.findall(r"\w+", b.lower()))
-    if not toks_a and not toks_b:
+# REMOVE the jaccard_score function - it's no longer needed
+# def jaccard_score(a, b):
+#    # ... (old code removed) ...
+
+# --- ADD the new function using sentence-transformers ---
+def calculate_semantic_similarity(text_a, text_b, model):
+    """Calculates cosine similarity between text embeddings."""
+    try:
+        # Encode texts into embeddings (vectors)
+        embedding_a = model.encode(text_a, convert_to_tensor=True)
+        embedding_b = model.encode(text_b, convert_to_tensor=True)
+
+        # Calculate cosine similarity
+        cosine_scores = util.cos_sim(embedding_a, embedding_b)
+        similarity = cosine_scores.item() # Get the float value from the tensor
+
+        # Scale similarity score from ~[0, 1] range to [0, 100]
+        # Clamp the value between 0 and 1 before scaling
+        scaled_score = max(0.0, min(1.0, similarity)) * 100.0
+
+        return scaled_score
+
+    except Exception as e:
+        # Handle potential errors during encoding or similarity calculation
+        print(f"Error during semantic similarity calculation: {e}", file=sys.stderr)
+        # Return a default low score or re-raise the exception
         return 0.0
-    inter = toks_a & toks_b
-    union = toks_a | toks_b
-    return len(inter) / len(union) * 100
 
 
 def main():
@@ -39,14 +72,43 @@ def main():
         sys.exit(1)
 
     resume_path, job_path = sys.argv[1], sys.argv[2]
-    resume_txt = extract_text(resume_path)
 
-    with open(job_path, "r", encoding="utf-8") as f:
-        job_txt = f.read()
+    try:
+        # --- Initialize the model ONCE ---
+        # Using a pre-trained model effective for semantic similarity tasks.
+        # 'all-MiniLM-L6-v2' is lightweight and fast.
+        model = SentenceTransformer('all-MiniLM-L6-v2')
 
-    score = jaccard_score(resume_txt, job_txt)
-    output = {"Match Score": score}
-    print(json.dumps(output))
+        # Extract text (function now includes basic cleaning)
+        resume_txt = extract_text(resume_path)
+        with open(job_path, "r", encoding="utf-8") as f:
+            job_txt = f.read()
+            # Simple cleaning for job description text as well
+            job_txt = re.sub(r'\s+', ' ', job_txt).strip()
+
+        # Handle empty text cases which can cause errors
+        if not resume_txt or not job_txt:
+             print(f"Error: Empty content found in resume or job description.", file=sys.stderr)
+             score = 0.0
+        else:
+            # --- Calculate semantic similarity score ---
+            score = calculate_semantic_similarity(resume_txt, job_txt, model) # Use new function
+
+        # Output JSON
+        output = {"Match Score": score}
+        print(json.dumps(output))
+
+    except ValueError as ve:
+        print(f"Error processing files: {ve}", file=sys.stderr)
+        # Output a score of 0 or error JSON if preferred
+        print(json.dumps({"Match Score": 0.0, "error": str(ve)}))
+        sys.exit(1)
+    except Exception as e:
+        # Catch any other unexpected errors (e.g., model loading issues)
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
+        # Output a score of 0 or error JSON
+        print(json.dumps({"Match Score": 0.0, "error": f"Unexpected error: {e}"}))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
