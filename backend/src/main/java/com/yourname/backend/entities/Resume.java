@@ -2,6 +2,10 @@ package com.yourname.backend.entities;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.*;
+
+import static jakarta.persistence.CascadeType.MERGE;
+import static jakarta.persistence.CascadeType.PERSIST;
 
 
 @Entity
@@ -26,6 +30,23 @@ public class Resume {
 
     @Column(nullable = true) // Score might not be calculated immediately
     private Double matchScore; // Score from 0.0 to 100.0
+
+    @Column(length = 320)                 private String email;
+    @Column(length = 32)                  private String phone;
+    @Column(columnDefinition = "text")    private String summary;
+    @Column(length = 64)                  private String education;
+
+    @ManyToMany(cascade = {PERSIST, MERGE})
+    @JoinTable(name = "resume_skills",
+            joinColumns  = @JoinColumn(name="resume_id"),
+            inverseJoinColumns = @JoinColumn(name="skill_id"))
+    private Set<Skill> skills = new HashSet<>();
+
+    @OneToMany(mappedBy = "resume",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true)
+    private List<Experience> experience = new ArrayList<>();
+
 
 
     // Default constructor required by JPA
@@ -103,5 +124,37 @@ public class Resume {
 
     public void setMatchScore(Double matchScore) {
         this.matchScore = matchScore;
+    }
+    public String getEmail() {
+        return email;
+    }
+    public void setEmail(String email) {
+        this.email = email;
+    }
+    public String getPhone() {
+        return phone;
+    }
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+    public String getSummary() {
+        return summary;
+    }
+    public void setSummary(String summary) {
+        this.summary = summary;
+    }
+    public Set<Skill> getSkills() { return skills; }
+
+    public void setSkills(Set<Skill> skills) { this.skills = skills; }
+
+    public List<Experience> getExperiences() { return experience; }
+    public void setExperiences(List<Experience> experiences) {
+        this.experience = experiences;
+    }
+    public String getEducation() {
+        return education;
+    }
+    public void setEducation(String education) {
+        this.education = education;
     }
 }

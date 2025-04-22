@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger; // Import Logger
 import org.slf4j.LoggerFactory; // Import LoggerFactory
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -22,7 +23,8 @@ public class AiService {
     // IMPORTANT: Replace this path with the actual output of `which python3`
     //            when your venv is activated in the terminal.
     // Example path shown for macOS, adjust if needed for Windows (\Scripts\python.exe)
-    private static final String PYTHON = "/Users/siddarthluthra/Desktop/Smart Resume Screener/venv/bin/python3";
+    @Value("${ai.python-executable:python3}")
+    private String PYTHON;
 
     // Relative path from the backend working directory to the script
     // (Since you moved 'ai' inside 'backend')
