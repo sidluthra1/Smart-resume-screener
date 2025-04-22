@@ -95,8 +95,7 @@ def main():
             score = calculate_semantic_similarity(resume_txt, job_txt, model) # Use new function
 
         # Output JSON
-        output = {"Match Score": score}
-        print(json.dumps(output))
+        print(json.dumps({"Overlap": round(score, 2)}))
 
     except ValueError as ve:
         print(f"Error processing files: {ve}", file=sys.stderr)
