@@ -1,6 +1,7 @@
 // src/main/java/com/yourname/backend/entities/Experience.java
 package com.yourname.backend.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 @Entity
@@ -9,6 +10,7 @@ public class Experience {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @JsonIgnore
     @ManyToOne @JoinColumn(name = "resume_id", nullable = false)
     private Resume resume;
 

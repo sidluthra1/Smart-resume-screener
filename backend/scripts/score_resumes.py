@@ -27,7 +27,7 @@ from openai import OpenAI
 from sentence_transformers import SentenceTransformer, util
 
 # ---------- weights ------------------------------------------------------
-W_SEM, W_SK, W_ED, W_EX = 0.40, 0.30, 0.15, 0.15
+W_SEM, W_SK, W_ED, W_EX, W_OV, W_LLM = 0.05, 0.15, 0.20, 0.15, 0.05, 0.40
 # -------------------------------------------------------------------------
 
 # ---------- helpers ------------------------------------------------------
@@ -99,14 +99,23 @@ def main() -> None:
     ed   = float(subs.get("EducationScore",  0.0))
     ex   = float(subs.get("ExperienceScore", 0.0))
 
-    final = sem_score*W_SEM + sk*W_SK + ed*W_ED + ex*W_EX
+    final = (
+            sem_score * W_SEM +
+            sk * W_SK +
+            ed * W_ED +
+            ex * W_EX +
+            overlap * W_OV +
+            llm_score * W_LLM
+    )
 
     print(json.dumps({
-        "SemanticScore":   round(sem_score,  1),
-        "SkillsScore":     round(sk,         1),
-        "EducationScore":  round(ed,         1),
-        "ExperienceScore": round(ex,         1),
-        "FinalScore":      round(final,      1)
+        "SemanticScore": round(sem_score, 1),
+        "SkillsScore": round(sk, 1),
+        "EducationScore": round(ed, 1),
+        "ExperienceScore": round(ex, 1),
+        "Overlap": round(overlap, 1),
+        "LLMscore": round(llm_score, 1),
+        "FinalScore": round(final, 1)
     }))
 
 # -------------------------------------------------------------------------

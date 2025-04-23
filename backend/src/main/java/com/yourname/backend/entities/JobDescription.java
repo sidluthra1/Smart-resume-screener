@@ -1,52 +1,80 @@
+// src/main/java/com/yourname/backend/entities/JobDescription.java
 package com.yourname.backend.entities;
 
 import jakarta.persistence.*;
+import java.util.HashSet;
+import java.util.Set;
+
+import static jakarta.persistence.CascadeType.MERGE;
+import static jakarta.persistence.CascadeType.PERSIST;
 
 @Entity
 @Table(name = "job_descriptions")
 public class JobDescription {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String title;
 
-    @Column(length = 5000) // Allows for longer job descriptions
+    private String category;     // new (nullable)
+    private String location;     // new (nullable)
+
+    @Column(columnDefinition = "text")
     private String descriptionText;
 
-    // Default constructor required by JPA
-    public JobDescription() {
-    }
+    @Column(length = 2000)          // plenty for a paragraph
+    private String summary;
 
-    public JobDescription(String title, String descriptionText) {
-        this.title = title;
-        this.descriptionText = descriptionText;
-    }
+    /* ------------------------------  Skills  ------------------------------ */
+    @ManyToMany(cascade = {PERSIST, MERGE})
+    @JoinTable(name = "job_skills",
+            joinColumns        = @JoinColumn(name = "job_id"),
+            inverseJoinColumns = @JoinColumn(name = "skill_id"))
+    private Set<Skill> skills = new HashSet<>();
 
-    // --- Getters and Setters ---
+    /* ----------------------  Requirements & Responsibilities -------------- */
+    @Column(columnDefinition = "text")
+    private String requirements;
 
-    public Long getId() {
-        return id;
-    }
+    @Column(columnDefinition = "text")
+    private String responsibilities;
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    /* (optional) raw JSON that came back from your OpenAI parser */
+    @Column(columnDefinition = "jsonb")    // if you use Postgres
+    private String parsedJson;
 
-    public String getTitle() {
-        return title;
-    }
+    /* --------------------------------------------------------------------- */
+    public JobDescription() {}
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
+    /* ---------- getters / setters ---------------------------------------- */
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public String getDescriptionText() {
-        return descriptionText;
-    }
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
 
-    public void setDescriptionText(String descriptionText) {
-        this.descriptionText = descriptionText;
-    }
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
+
+    public String getDescriptionText() { return descriptionText; }
+    public void setDescriptionText(String descriptionText) { this.descriptionText = descriptionText; }
+
+    public Set<Skill> getSkills() { return skills; }
+    public void setSkills(Set<Skill> skills) { this.skills = skills; }
+
+    public String getRequirements() { return requirements; }
+    public void setRequirements(String requirements) { this.requirements = requirements; }
+
+    public String getResponsibilities() { return responsibilities; }
+    public void setResponsibilities(String responsibilities) { this.responsibilities = responsibilities; }
+
+    public String getParsedJson() { return parsedJson; }
+    public void setParsedJson(String parsedJson) { this.parsedJson = parsedJson; }
+
+    public String getSummary() { return summary; }
+    public void   setSummary(String summary) { this.summary = summary; }
 }

@@ -58,15 +58,18 @@ def openAIParser(src: Path):
                             "description": "Provide a 2-3 sentence summary of the job description"
                         },
                         "skills": {
-                            "type": "string",
-                            "description": "Comma-separated list of skills. Interperit these even if not listed explicitly in the file"
+                            "type": "array",
+                            "items": {"type":"string"},
+                            "description": "Comma-separated list of skills. Interperit these if not listed explicitly in the file, if already listed, no need to interperit."
                         },
                         "Requirements": {
-                            "type": "string",
+                            "type": "array",
+                            "items": {"type":"string"},
                             "description": "List requirements found within the file. Interperit these even if not listed explicitly in the file"
                         },
                         "Responsibilities": {
-                            "type": "string",
+                            "type": "array",
+                            "items": {"type":"string"},
                             "description": "List responsibilities of the job description. Interperit these even if not listed explicitly in the file"
                         },
                     },

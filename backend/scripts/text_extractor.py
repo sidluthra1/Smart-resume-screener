@@ -11,6 +11,8 @@ def extract_text(path: str) -> str:
     elif p.suffix.lower() in ('.docx',):
         doc = docx.Document(path)
         return "\n".join(para.text for para in doc.paragraphs)
+    elif p.suffix.lower() == '.txt':          # <-- add this block
+        return p.read_text(encoding='utf-8')
     else:
         raise ValueError(f"Unsupported file type: {p.suffix}")
 

@@ -5,12 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.stream.Collectors;
 
 @Service
 public class AiService {
@@ -18,73 +18,112 @@ public class AiService {
     private static final Logger log = LoggerFactory.getLogger(AiService.class);
     private final ObjectMapper mapper = new ObjectMapper();
 
-    /** absolute (or resolvable) path to the python interpreter in your venv */
+    /** path to the Python interpreter inside your venv (defaults to “python3”) */
     @Value("${ai.python-executable:python3}")
     private String PYTHON;
 
-    /** relative path inside backend to the new scorer */
-    private static final String SCORER_SCRIPT = "src/main/python/score_resumes.py";
+    /** relative path (or absolute) to score_resumes.py */
+    @Value("${python.scorer}")
+    private String SCORER_SCRIPT;
+
+    @Autowired
+    private OpenAiHelper openAiHelper;
+
+    /** Immutable bundle of all the partial + final scores we care about. */
+    public static record ScoreBundle(
+            double finalScore,
+            double semanticScore,
+            double skillsScore,
+            double educationScore,
+            double experienceScore,
+            double overlap,   // ← NEW: raw semantic-matcher overlap %
+            double llmScore   // ← NEW: OpenAI score
+    ) { }
 
     /**
-     * @param resumePlainTxt   plain‑text resume (already extracted)
-     * @param jobPlainTxt      plain‑text job description
-     * @param parsedResumeJson JSON string produced by ResumeParser.py
-     * @param parsedJobJson    JSON string produced by JobDescriptionParser.py
-     * @return blended 0‑100 score
+     * Runs the scorer pipeline and returns all component scores.
+     *
+     * @param resumePlainTxt   plain-text resume
+     * @param jobPlainTxt      plain-text JD
+     * @param parsedResumeJson JSON from ResumeParser.py
+     * @param parsedJobJson    JSON from JobDescriptionParser.py
+     * @param overlapScore     % overlap already produced by semantic_matcher.py
      */
-    public double scoreResume(
+    public ScoreBundle scoreResume(
             String resumePlainTxt,
             String jobPlainTxt,
             String parsedResumeJson,
-            String parsedJobJson
+            String parsedJobJson,
+            double overlapScore
     ) throws IOException, InterruptedException {
 
-        /* ------------------------------------------------------------------
-           1) Build the single JSON payload that score_resumes.py expects
-        ------------------------------------------------------------------ */
+        /* --------------------------------------------------------------
+           1) Ask the LLM once – expensive, so do it *before* the Python call
+        -------------------------------------------------------------- */
+        double llmScore = openAiHelper.compareResumeAndJob(parsedResumeJson, parsedJobJson);
+        log.debug("OpenAI returned LLMscore={}", llmScore);
+
+        /* --------------------------------------------------------------
+           2) Build JSON payload for score_resumes.py
+        -------------------------------------------------------------- */
         ObjectNode root = mapper.createObjectNode();
+        root.put("Overlap",   overlapScore);
+        root.put("LLMscore",  llmScore);
         root.put("resume_text", resumePlainTxt);
         root.put("job_text",    jobPlainTxt);
         root.set("resume_json", mapper.readTree(parsedResumeJson));
         root.set("job_json",    mapper.readTree(parsedJobJson));
         String input = mapper.writeValueAsString(root);
 
-        /* ------------------------------------------------------------------
-           2) Launch the scoring script
-        ------------------------------------------------------------------ */
+        /* --------------------------------------------------------------
+           3) Launch the scorer script
+        -------------------------------------------------------------- */
         ProcessBuilder pb = new ProcessBuilder(PYTHON, SCORER_SCRIPT);
-        pb.redirectErrorStream(true);               // merge stderr → stdout
+        pb.redirectErrorStream(true);
         Process p = pb.start();
 
-        /* ------------------------------------------------------------------
-           3) Feed the JSON into the script’s STDIN
-        ------------------------------------------------------------------ */
+        /* 4) Pipe the JSON into STDIN */
         try (BufferedWriter w = new BufferedWriter(
                 new OutputStreamWriter(p.getOutputStream(), StandardCharsets.UTF_8))) {
             w.write(input);
         }
 
-        /* 4) Read everything the script prints to STDOUT */
-        String output;
+        /* 5) Capture the *last* line printed (script should print one JSON line) */
+        String lastLine = null;
         try (BufferedReader r = new BufferedReader(
                 new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-            output = r.lines().collect(Collectors.joining(System.lineSeparator()));
+            String line;
+            while ((line = r.readLine()) != null) lastLine = line;
         }
+        if (lastLine == null) lastLine = "{}";
 
         int exit = p.waitFor();
         log.debug("score_resumes.py exited with code {}", exit);
-
         if (exit != 0) {
-            log.error("Scorer failed. Output was:\n{}", output);
+            log.error("Scorer failed. Output was:\n{}", lastLine);
             throw new RuntimeException("Scorer script failed – see logs.");
         }
 
-        /* ------------------------------------------------------------------
-           5) Parse the JSON result and return the FinalScore
-        ------------------------------------------------------------------ */
-        JsonNode node = mapper.readTree(output);
-        double finalScore = node.get("FinalScore").asDouble();
+        /* --------------------------------------------------------------
+           6) Parse the JSON and build the bundle
+        -------------------------------------------------------------- */
+        JsonNode n = mapper.readTree(lastLine);
+        double finalScore      = n.get("FinalScore").asDouble();
+        double semanticScore   = n.get("SemanticScore").asDouble();
+        double skillsScore     = n.get("SkillsScore").asDouble();
+        double educationScore  = n.get("EducationScore").asDouble();
+        double experienceScore = n.get("ExperienceScore").asDouble();
+
         log.info("Final blended score returned: {}", finalScore);
-        return finalScore;
+
+        return new ScoreBundle(
+                finalScore,
+                semanticScore,
+                skillsScore,
+                educationScore,
+                experienceScore,
+                overlapScore,   // ← use the value we ALREADY have
+                llmScore        // ← ditto
+        );
     }
 }

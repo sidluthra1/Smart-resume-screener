@@ -34,7 +34,7 @@ public class Resume {
     @Column(length = 320)                 private String email;
     @Column(length = 32)                  private String phone;
     @Column(columnDefinition = "text")    private String summary;
-    @Column(length = 64)                  private String education;
+    @Column(length = 256)                  private String education;
 
     @ManyToMany(cascade = {PERSIST, MERGE})
     @JoinTable(name = "resume_skills",
@@ -45,7 +45,7 @@ public class Resume {
     @OneToMany(mappedBy = "resume",
             cascade = CascadeType.ALL,
             orphanRemoval = true)
-    private List<Experience> experience = new ArrayList<>();
+    private List<Experience> experiences = new ArrayList<>();
 
 
 
@@ -147,9 +147,9 @@ public class Resume {
 
     public void setSkills(Set<Skill> skills) { this.skills = skills; }
 
-    public List<Experience> getExperiences() { return experience; }
+    public List<Experience> getExperiences() { return experiences; }
     public void setExperiences(List<Experience> experiences) {
-        this.experience = experiences;
+        this.experiences = experiences;
     }
     public String getEducation() {
         return education;

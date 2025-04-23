@@ -1,6 +1,7 @@
 // src/main/java/com/yourname/backend/entities/Skill.java
 package com.yourname.backend.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.util.Set;
 import java.util.HashSet;
@@ -15,6 +16,7 @@ public class Skill {
     private String name;
 
     @ManyToMany(mappedBy = "skills")
+    @JsonIgnore
     private Set<Resume> resumes = new HashSet<>();
 
     // constructors

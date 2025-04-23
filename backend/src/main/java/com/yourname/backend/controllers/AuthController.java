@@ -6,6 +6,8 @@ import com.yourname.backend.services.AuthService;
 import com.yourname.backend.util.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 
 @RestController
 @RequestMapping("/auth")
