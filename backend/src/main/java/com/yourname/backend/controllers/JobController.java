@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -108,7 +109,7 @@ public class JobController {
         jd.setCategory(n.path("Job Category").asText(null));
         jd.setLocation(n.path("Location").asText(null));
         jd.setDescriptionText(plainTxt);
-        jd.setSummary(summary);   // raw JD text
+        jd.setSummary(strip(summary));   // raw JD text
         jd.setSkills(skills);
         jd.setRequirements(strip(String.join(", ", reqList)));
         jd.setResponsibilities(strip(String.join(", ", respList)));
@@ -133,6 +134,22 @@ public class JobController {
                         splitCsv(jd.getRequirements()),
                         splitCsv(jd.getResponsibilities())))
                 .toList();
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<JobDescription> getById(@PathVariable Long id) {
+        return jobRepo.findById(id)
+            .map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
+        if (!jobRepo.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        jobRepo.deleteById(id);
+        return ResponseEntity.noContent().build();
     }
 
     /* ==================================================================
@@ -178,7 +195,8 @@ public class JobController {
                 jd.getSummary(),       // short description
                 skills,                // list, easy for front-end
                 req,
-                resp
+                resp,
+                jd.getStatus()
         );
     }
 

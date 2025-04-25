@@ -11,5 +11,6 @@ public record JobDescriptionDto(
         String summary,
         List<String> skills,
         List<String> requirements,
-        List<String> responsibilities
+        List<String> responsibilities,
+        String status
 ) {}

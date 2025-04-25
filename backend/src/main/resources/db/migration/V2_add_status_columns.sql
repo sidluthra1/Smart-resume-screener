@@ -1,0 +1,5 @@
+ALTER TABLE resumes
+    ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'New';
+
+ALTER TABLE job_descriptions
+    ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active';

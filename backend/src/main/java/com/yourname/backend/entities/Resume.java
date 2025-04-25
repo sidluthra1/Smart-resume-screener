@@ -23,6 +23,9 @@ public class Resume {
     private String filePath; // Path where the file is stored
 
     @Column(nullable = false)
+    private String status;
+
+    @Column(nullable = false)
     private String contentType; // e.g., "application/pdf"
 
     @Column(nullable = false)
@@ -58,6 +61,7 @@ public class Resume {
         this.candidateName = candidateName;
         this.filePath = filePath;
         this.uploadDate = LocalDateTime.now(); // Set upload time automatically
+        this.status        = "New";  //Default
     }
 
     // --- Getters and Setters ---
@@ -156,5 +160,12 @@ public class Resume {
     }
     public void setEducation(String education) {
         this.education = education;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

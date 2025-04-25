@@ -21,5 +21,6 @@ public record ResumeDto(
         String phone,
         String summary,
         String education,
-        Set<String> skills
+        Set<String> skills,
+        String status
 ) {}

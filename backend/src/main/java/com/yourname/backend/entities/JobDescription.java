@@ -44,8 +44,13 @@ public class JobDescription {
     @Column(columnDefinition = "jsonb")    // if you use Postgres
     private String parsedJson;
 
+    @Column(nullable = false)
+    private String status;
+
     /* --------------------------------------------------------------------- */
-    public JobDescription() {}
+    public JobDescription() {
+        this.status = "Active";
+    }
 
     /* ---------- getters / setters ---------------------------------------- */
     public Long getId() { return id; }
@@ -77,4 +82,7 @@ public class JobDescription {
 
     public String getSummary() { return summary; }
     public void   setSummary(String summary) { this.summary = summary; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 }
