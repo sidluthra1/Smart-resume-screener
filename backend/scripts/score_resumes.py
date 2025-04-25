@@ -1,26 +1,3 @@
-#!/usr/bin/env python3
-"""
-score_resumes.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Reads a single JSON object from STDIN that contains:
-    resume_text   : str  (plain‑text resume)
-    job_text      : str  (plain‑text job description)
-    resume_json   : obj  (parsed resume from ResumeParser.py)
-    job_json      : obj  (parsed JD   from JobDescriptionParser.py)
-
-Writes a JSON object to STDOUT with:
-    SemanticScore, SkillsScore, EducationScore, ExperienceScore, FinalScore
-
-Sub‑scores:
-    • SemanticScore   — sentence‑transformer cosine similarity (0‑100)
-    • SkillsScore     — OpenAI grades skills overlap            (0‑100)
-    • EducationScore  — OpenAI grades education fit             (0‑100)
-    • ExperienceScore — OpenAI grades experience fit            (0‑100)
-
-FinalScore = 40 % Semantic + 30 % Skills + 15 % Education + 15 % Experience
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-"""
-
 import sys, json, os, re
 from pathlib import Path
 from openai import OpenAI
