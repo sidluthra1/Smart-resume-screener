@@ -76,6 +76,17 @@ public class ResumeController {
         this.skillService = skillService;
     }
 
+    private static void applyScores(Resume r, AiService.ScoreBundle s) {
+        if (s == null) return;   // not scored yet
+        r.setMatchScore     (s.finalScore());
+        r.setSemanticScore  (s.semanticScore());
+        r.setSkillsScore    (s.skillsScore());
+        r.setEducationScore (s.educationScore());
+        r.setExperienceScore(s.experienceScore());
+        r.setOverlapScore        (s.overlap());
+        r.setLlmmScore      (s.llmScore());
+    }
+
     @PatchMapping("/{id}/status")
     public ResponseEntity<ResumeDto> updateStatus(
             @PathVariable Long id,
@@ -118,18 +129,14 @@ public class ResumeController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping(path = "/upload",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+    @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResumeDto upload(
-            @RequestParam("file") @NotNull MultipartFile file,
-            @RequestParam("candidateName") @NotNull String candidateName,
-            @RequestParam(value = "jobId", required = false) Long jobId
-    ) throws Exception {
+    public ResumeDto upload(@RequestParam("file")          @NotNull MultipartFile file,
+                            @RequestParam("candidateName") @NotNull String candidateName,
+                            @RequestParam(value = "jobId", required = false) Long jobId)
+            throws Exception {
 
-        if (file.isEmpty())
-            throw new IllegalArgumentException("File is empty");
-
+        if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
         String ct = file.getContentType();
         if (!"application/pdf".equals(ct) &&
                 !"application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(ct))
@@ -137,60 +144,41 @@ public class ResumeController {
 
         String resumePath = storageService.store(file);
 
-        // parse resume JSON + text
+        // ── 1) Parse résumé
         String parsedResumeJson = runPython(RESUME_PARSER, resumePath);
-        ParsedResume parsedRes = mapper.readValue(parsedResumeJson, ParsedResume.class);
-        String resumePlainTxt = runPythonCaptureText(TEXT_EXTRACTOR, resumePath);
+        ParsedResume parsedRes  = mapper.readValue(parsedResumeJson, ParsedResume.class);
+        String resumePlainTxt   = runPythonCaptureText(TEXT_EXTRACTOR, resumePath);
 
         AiService.ScoreBundle scores = null;
-        double finalScore = 0.0;
-
         if (jobId != null) {
-            // fetch job and parse
-            JobDescription job = jobRepo.findById(jobId)
+            // ── 2) Parse job + run scoring
+            JobDescription jd = jobRepo.findById(jobId)
                     .orElseThrow(() -> new IllegalArgumentException("Invalid jobId " + jobId));
-
             Path tmp = Files.createTempFile("job-", ".txt");
-            Files.writeString(tmp, job.getDescriptionText());
+            Files.writeString(tmp, jd.getDescriptionText());
             String parsedJobJson = runPython(JOB_PARSER, tmp.toString());
-
-            // semantic matcher
-            String matcherJson = runPythonCaptureText(SEMANTIC_MATCHER, resumePath, tmp.toString());
-            double overlap = parseOverlap(matcherJson);
+            double overlap = parseOverlap(runPythonCaptureText(SEMANTIC_MATCHER, resumePath, tmp.toString()));
             Files.deleteIfExists(tmp);
-
-            // score resume
-            scores = aiService.scoreResume(
-                    resumePlainTxt,
-                    job.getDescriptionText(),
-                    parsedResumeJson,
-                    parsedJobJson,
-                    overlap
-            );
-            finalScore = scores.finalScore();
+            scores = aiService.scoreResume(resumePlainTxt, jd.getDescriptionText(), parsedResumeJson, parsedJobJson, overlap);
         }
 
-        // build resume entity
+        // ── 3) Build entity & persist
         Resume r = new Resume(file.getOriginalFilename(), candidateName, resumePath);
         r.setContentType(ct);
         r.setSize(file.getSize());
-        r.setMatchScore(finalScore);
+        applyScores(r, scores);          // ← granular fields set here
+        if (jobId != null) r.setLastScoredJobId(jobId);
         r.setEmail(parsedRes.email);
         r.setPhone(parsedRes.phone_number);
         r.setSummary(parsedRes.summary);
         r.setEducation(parsedRes.education);
         r.setStatus("New");
 
+        // skills & experiences
         Set<String> skillNames = Arrays.stream(parsedRes.skills.split(","))
-                .map(String::trim)
-                .filter(n -> !n.isBlank())
-                .collect(Collectors.toSet());
-        Set<Skill> skills = skillService.fetchOrCreateSkills(skillNames);
-        r.setSkills(skills);
-
-        Experience exp = new Experience();
-        exp.setDescription(parsedRes.work_experience);
-        exp.setResume(r);
+                .map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet());
+        r.setSkills(skillService.fetchOrCreateSkills(skillNames));
+        Experience exp = new Experience(); exp.setDescription(parsedRes.work_experience); exp.setResume(r);
         r.getExperiences().add(exp);
 
         Resume saved = resumeRepo.save(r);
@@ -200,6 +188,51 @@ public class ResumeController {
     @GetMapping("/all")
     public List<Resume> list() {
         return resumeRepo.findAll();
+    }
+
+    @GetMapping("/{id}/analysis")
+    public ResponseEntity<?> analysis(@PathVariable Long id) {
+        return resumeRepo.findById(id)
+                .<ResponseEntity<?>>map(r -> ResponseEntity.ok(new Object() {
+                    public final double matchScore      = opt(r.getMatchScore());
+                    public final double skillsScore     = opt(r.getSkillsScore());
+                    public final double educationScore  = opt(r.getEducationScore());
+                    public final double experienceScore = opt(r.getExperienceScore());
+                    public final Long   jobId           = r.getLastScoredJobId();
+                }))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    private static double opt(Double v) { return v == null ? 0.0 : v; }
+
+    @PostMapping(path = "/score", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ResumeDto> scoreExisting(@RequestParam("resumeId") Long resumeId,
+                                                   @RequestParam("jobId")    Long jobId) throws Exception {
+        Resume r  = resumeRepo.findById(resumeId)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid resumeId " + resumeId));
+        JobDescription jd = jobRepo.findById(jobId)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid jobId " + jobId));
+
+        String resumePlainTxt   = runPythonCaptureText(TEXT_EXTRACTOR, r.getFilePath());
+        String parsedResumeJson = runPython(RESUME_PARSER, r.getFilePath());
+        String jobTxtFile       = writeTempFile(jd.getDescriptionText());
+        String parsedJobJson    = runPython(JOB_PARSER, jobTxtFile);
+        double overlapScore     = parseOverlap(runPythonCaptureText(SEMANTIC_MATCHER, r.getFilePath(), jobTxtFile));
+
+        AiService.ScoreBundle scores = aiService.scoreResume(
+                resumePlainTxt, jd.getDescriptionText(), parsedResumeJson, parsedJobJson, overlapScore);
+
+        applyScores(r, scores);                    // ← granular fields updated here
+        r.setLastScoredJobId(jobId);
+        resumeRepo.save(r);
+        return ResponseEntity.ok(toDto(r, scores));
+    }
+
+
+    private String writeTempFile(String text) throws IOException {
+        Path tmp = Files.createTempFile("job-", ".txt");
+        Files.writeString(tmp, text, StandardCharsets.UTF_8);
+        return tmp.toString();
     }
 
     private double parseOverlap(String json) {

@@ -19,6 +19,13 @@ public class Resume {
     private String fileName;
     private String candidateName;
     private LocalDateTime uploadDate;
+    private Double semanticScore;      // overall text-similarity %
+    private Double skillsScore;        // skills %
+    private Double educationScore;     // education %
+    private Double experienceScore;    // experience %
+    private Double overlap;            // raw embeddings overlap %
+    private Double llmScore;           // OpenAI “human-like” score %
+    private Long lastScoredJobId;
 
     private String filePath; // Path where the file is stored
 
@@ -167,5 +174,47 @@ public class Resume {
     }
     public void setStatus(String status) {
         this.status = status;
+    }
+    public Double getSemanticScore() {
+        return semanticScore;
+    }
+    public void setSemanticScore(Double semanticScore) {
+        this.semanticScore = semanticScore;
+    }
+    public Double getSkillsScore() {
+        return skillsScore;
+    }
+    public void setSkillsScore(Double skillsScore) {
+        this.skillsScore = skillsScore;
+    }
+    public Double getEducationScore() {
+        return educationScore;
+    }
+    public void setEducationScore(Double educationScore) {
+        this.educationScore = educationScore;
+    }
+    public Double getExperienceScore() {
+        return experienceScore;
+    }
+    public void setExperienceScore(Double experienceScore) {
+        this.experienceScore = experienceScore;
+    }
+    public Double getOverlapScore() {
+        return overlap;
+    }
+    public void setOverlapScore(Double overlapScore) {
+        this.overlap = overlapScore;
+    }
+    public Double getLlmmScore() {
+        return llmScore;
+    }
+    public void setLlmmScore(Double llmScore) {
+        this.llmScore = llmScore;
+    }
+    public Long getLastScoredJobId() {
+        return lastScoredJobId;
+    }
+    public void setLastScoredJobId(Long lastScoredJobId) {
+        this.lastScoredJobId = lastScoredJobId;
     }
 }

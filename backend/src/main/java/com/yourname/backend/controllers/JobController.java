@@ -1,9 +1,9 @@
-// src/main/java/com/yourname/backend/controllers/JobController.java
 package com.yourname.backend.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourname.backend.dto.JobDescriptionDto;
+import com.yourname.backend.dto.JobRequest;
 import com.yourname.backend.entities.JobDescription;
 import com.yourname.backend.entities.Skill;
 import com.yourname.backend.repositories.JobDescriptionRepository;
@@ -19,10 +19,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import static com.yourname.backend.util.CitationCleaner.strip;
 
@@ -38,7 +43,6 @@ public class JobController {
     private final SkillService             skillService;
     private final ObjectMapper             JSON = new ObjectMapper();
 
-    /* ---------- paths injected from application.properties ---------- */
     @Value("${python.text-extractor}")
     private String TEXT_EXTRACTOR;
 
@@ -58,89 +62,140 @@ public class JobController {
     }
 
     /* ------------------------------------------------------------------
-                              POST  /job/upload
+       Manual entry via JSON → treat as .txt + parse
        ------------------------------------------------------------------ */
-    @PostMapping(path = "/upload",
+    @PostMapping(path = "/createManual",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public JobDescriptionDto createManual(@RequestBody JobRequest req) throws Exception {
+        // 1) write the raw descriptionText to a temp .txt file
+        Path tmp = Files.createTempFile("job-", ".txt");
+        Files.writeString(tmp, req.getDescriptionText(), StandardCharsets.UTF_8);
+        String jdPath = tmp.toAbsolutePath().toString();
+
+        // 2) invoke your parser (it can extract text & fields for .txt)
+        //    you can skip TEXT_EXTRACTOR if your JOB_PARSER handles raw text directly;
+        //    otherwise uncomment the next line to pull plain text:
+        // String plainTxt = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
+        String plainTxt   = req.getDescriptionText();
+        String parsedJson = runPython(JOB_PARSER, jdPath);
+        JsonNode n        = JSON.readTree(parsedJson);
+
+        // 3) extract all fields
+        String summary    = n.path("Job Description").asText(null);
+        String category   = n.path("Job Category").asText(null);
+        String location   = n.path("Location").asText(null);
+
+        List<String> skillsList = toStringList(n.path("skills"));
+        Set<Skill> skills = skillService.fetchOrCreateSkills(
+                skillsList.stream()
+                        .map(String::trim)
+                        .filter(s -> !s.isBlank())
+                        .collect(Collectors.toSet())
+        );
+
+        List<String> reqList  = JSON.convertValue(
+                n.path("Requirements").isMissingNode() ? List.of() : n.path("Requirements"),
+                JSON.getTypeFactory().constructCollectionType(List.class, String.class)
+        );
+        List<String> respList = JSON.convertValue(
+                n.path("Responsibilities").isMissingNode() ? List.of() : n.path("Responsibilities"),
+                JSON.getTypeFactory().constructCollectionType(List.class, String.class)
+        );
+
+        // 4) build & persist
+        JobDescription jd = new JobDescription();
+        jd.setTitle(req.getTitle());
+        jd.setCategory(category);
+        jd.setLocation(location);
+        jd.setDescriptionText(plainTxt);
+        jd.setSummary(strip(summary));
+        jd.setSkills(skills);
+        jd.setRequirements(strip(String.join(", ", reqList)));
+        jd.setResponsibilities(strip(String.join(", ", respList)));
+        jd.setParsedJson(parsedJson);
+        jd.setFilePath(jdPath);
+        // status defaults to "Active" in your entity
+
+        JobDescription saved = jobRepo.save(jd);
+
+        // 5) return DTO
+        return toDto(saved, skillsList, reqList, respList);
+    }
+
+    /* ------------------------------------------------------------------
+       File‐upload path (unchanged)
+       ------------------------------------------------------------------ */
+    @PostMapping(path = "/uploadFile",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public JobDescriptionDto upload(@RequestParam("file")  @NotNull MultipartFile file,
-                                    @RequestParam("title") @NotNull String        title)
+    public JobDescriptionDto uploadFile(@RequestParam("file")  @NotNull MultipartFile file,
+                                        @RequestParam("title") @NotNull String        title)
             throws Exception {
-
-        /* 1) store the incoming file ---------------------------------- */
         if (file.isEmpty())
             throw new IllegalArgumentException("File is empty");
 
-        String jdPath = storageService.store(file);
-
-        /* 2) extract plain text from the file ------------------------- */
-        String plainTxt = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
-
-        /* 3) ask OpenAI to parse the JD ------------------------------- */
-        // only the path – parser does its own text extraction if needed
-        String parsedJson = runPython(JOB_PARSER, jdPath);
-        JsonNode n = JSON.readTree(parsedJson);
+        String jdPath     = storageService.store(file);
+        String plainTxt   = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
+        String parsedJson = runPython(JOB_PARSER,        jdPath);
+        JsonNode n        = JSON.readTree(parsedJson);
 
         String summary = n.path("Job Description").asText(null);
-
-        /* 4) skills → Set<Skill> -------------------------------------- */
-        List<String> skillsList = toStringList(n.path("skills"));      // <-- USE helper
+        List<String> skillsList = toStringList(n.path("skills"));
         Set<Skill> skills = skillService.fetchOrCreateSkills(
-                skillsList.stream().map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet()));
-
-// turn the list into Set<Skill> entities
-
-
-        /* 5) requirements & responsibilities -------------------------- */
+                skillsList.stream().map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet())
+        );
         List<String> reqList  = JSON.convertValue(
                 n.path("Requirements").isMissingNode() ? List.of() : n.path("Requirements"),
-                JSON.getTypeFactory().constructCollectionType(List.class, String.class));
+                JSON.getTypeFactory().constructCollectionType(List.class, String.class)
+        );
         List<String> respList = JSON.convertValue(
                 n.path("Responsibilities").isMissingNode() ? List.of() : n.path("Responsibilities"),
-                JSON.getTypeFactory().constructCollectionType(List.class, String.class));
+                JSON.getTypeFactory().constructCollectionType(List.class, String.class)
+        );
 
-        String requirements     = String.join(", ", reqList);
-        String responsibilities  = String.join(", ", respList);
-
-
-        /* 6) build entity & persist ----------------------------------- */
         JobDescription jd = new JobDescription();
         jd.setTitle(title);
         jd.setCategory(n.path("Job Category").asText(null));
         jd.setLocation(n.path("Location").asText(null));
         jd.setDescriptionText(plainTxt);
-        jd.setSummary(strip(summary));   // raw JD text
+        jd.setSummary(strip(summary));
         jd.setSkills(skills);
         jd.setRequirements(strip(String.join(", ", reqList)));
         jd.setResponsibilities(strip(String.join(", ", respList)));
         jd.setParsedJson(parsedJson);
+        jd.setFilePath(jdPath);
 
         JobDescription saved = jobRepo.save(jd);
-
-        /* 7) return a clean DTO for the client ------------------------ */
         return toDto(saved, skillsList, reqList, respList);
     }
 
     /* ------------------------------------------------------------------
-                              GET /job/all
+       GET all jobs
        ------------------------------------------------------------------ */
     @GetMapping("/all")
     public List<JobDescriptionDto> list() {
-        return jobRepo.findAll()
-                .stream()
+        return jobRepo.findAll().stream()
                 .map(jd -> toDto(
                         jd,
                         jd.getSkills().stream().map(Skill::getName).toList(),
                         splitCsv(jd.getRequirements()),
-                        splitCsv(jd.getResponsibilities())))
+                        splitCsv(jd.getResponsibilities())
+                ))
                 .toList();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<JobDescription> getById(@PathVariable Long id) {
+    public ResponseEntity<JobDescriptionDto> getById(@PathVariable Long id) {
         return jobRepo.findById(id)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+                .map(jd -> toDto(
+                        jd,
+                        jd.getSkills().stream().map(Skill::getName).toList(),
+                        splitCsv(jd.getRequirements()),
+                        splitCsv(jd.getResponsibilities())
+                ))
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")
@@ -153,20 +208,17 @@ public class JobController {
     }
 
     /* ==================================================================
-                            helper methods
+       Helpers
        ================================================================== */
-
-    /** Safely converts either an array node or a single comma-string to List<String> */
     private List<String> toStringList(JsonNode node) {
-        if (node == null || node.isMissingNode() || node.isNull())
-            return List.of();
-
+        if (node == null || node.isMissingNode() || node.isNull()) return List.of();
         if (node.isArray()) {
-            List<String> list = new ArrayList<>();
-            node.forEach(jn -> list.add(jn.asText().trim()));
-            return list.stream().filter(s -> !s.isBlank()).toList();
+            return StreamSupport.stream(node.spliterator(), false)
+                    .map(JsonNode::asText)
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .toList();
         }
-
         if (node.isTextual()) {
             return Arrays.stream(node.asText().split("\\s*,\\s*"))
                     .filter(s -> !s.isBlank())
@@ -176,9 +228,8 @@ public class JobController {
     }
 
     private List<String> splitCsv(String csv) {
-        return (csv == null || csv.isBlank())
-                ? List.of()
-                : Arrays.stream(csv.split("\\s*,\\s*"))
+        if (csv == null || csv.isBlank()) return List.of();
+        return Arrays.stream(csv.split("\\s*,\\s*"))
                 .filter(s -> !s.isBlank())
                 .toList();
     }
@@ -192,42 +243,33 @@ public class JobController {
                 jd.getTitle(),
                 jd.getCategory(),
                 jd.getLocation(),
-                jd.getSummary(),       // short description
-                skills,                // list, easy for front-end
+                jd.getSummary(),
+                skills,
                 req,
                 resp,
                 jd.getStatus()
         );
     }
 
-    /* -------------- process helpers (same pattern as Resume side) ---- */
     private String runPython(String script, String... args)
             throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder();
-        pb.command().add(PYTHON);
-        pb.command().add(script);
+        ProcessBuilder pb = new ProcessBuilder(PYTHON, script);
         pb.command().addAll(List.of(args));
         pb.redirectErrorStream(true);
-
         Process p = pb.start();
         String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int exit = p.waitFor();
-        if (exit != 0) {
-            log.error("{} failed (exit {}) — output:\n{}", script, exit, out);
+        if (p.waitFor() != 0) {
+            log.error("{} failed →\n{}", script, out);
             throw new RuntimeException(script + " failed – see logs");
         }
         return out.trim();
     }
 
-    /** returns only the last line printed by the Python script */
     private String runPythonCaptureText(String script, String... args)
             throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder();
-        pb.command().add(PYTHON);
-        pb.command().add(script);
+        ProcessBuilder pb = new ProcessBuilder(PYTHON, script);
         pb.command().addAll(List.of(args));
         pb.redirectErrorStream(true);
-
         Process p = pb.start();
         String last = null;
         try (BufferedReader r = new BufferedReader(
@@ -235,13 +277,10 @@ public class JobController {
             String line;
             while ((line = r.readLine()) != null) last = line;
         }
-        if (last == null) last = "";
-
-        int exit = p.waitFor();
-        if (exit != 0) {
-            log.error("{} failed (exit {}). Last line: {}", script, exit, last);
+        if (p.waitFor() != 0) {
+            log.error("{} failed (last line: {})", script, last);
             throw new RuntimeException(script + " failed – see logs");
         }
-        return last.trim();
+        return last != null ? last : "";
     }
 }

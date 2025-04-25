@@ -8,6 +8,7 @@ import CandidateDetailPage from "./pages/CandidateDetailPage";
 import Login            from "./pages/Login";
 import Signup           from "./pages/Signup";
 import Dashboard        from "./pages/Dashboard";
+import MatchAnalysisPage from "./pages/MatchAnalysisPage";
 import ProtectedLayout  from "./components/ProtectedLayout";
 import JobDetailPage from "./pages/JobDetailPage";
 
@@ -34,6 +35,7 @@ export default function App() {
                     }
                 >
                     <Route path="dashboard" element={<Dashboard />} />
+                    <Route path="/resume/:resumeId/match"  element={<MatchAnalysisPage />}/>
                     <Route path="jobs"      element={<JobsPage />} />
                     <Route path="/jobs/:id"  element={<JobDetailPage />} />
                     <Route path="candidates" element={<CandidatesPage />} />

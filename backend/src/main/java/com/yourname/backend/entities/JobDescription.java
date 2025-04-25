@@ -23,6 +23,9 @@ public class JobDescription {
     @Column(columnDefinition = "text")
     private String descriptionText;
 
+    @Column(nullable = true)
+    private String filePath;
+
     @Column(length = 2000)          // plenty for a paragraph
     private String summary;
 
@@ -85,4 +88,7 @@ public class JobDescription {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getFilePath() { return filePath; }
+    public void setFilePath(String filePath) { this.filePath = filePath; }
 }

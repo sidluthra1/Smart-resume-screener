@@ -6,6 +6,7 @@ import { parseISO, format } from 'date-fns'
 import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card'
+import api from '../api/axios'
 
 export default function JobDetailPage() {
     const { id } = useParams()
@@ -44,18 +45,16 @@ export default function JobDetailPage() {
     }
 
     // Delete handler
-    const handleDelete = () => {
-        const token = localStorage.getItem('jwt')
-        fetch(`/job/${id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-            .then(r => {
-                if (!r.ok) throw new Error()
-                navigate('/jobs', { replace: true })
-            })
-            .catch(console.error)
-    }
+    const handleDelete = async () => {
+           if (!window.confirm('Delete this job?')) return
+           try {
+                 await api.delete(`/job/${id}`)
+                 navigate('/jobs', { replace: true })
+               } catch (err) {
+                 console.error(err)
+                 // optionally show an error message in your UI
+               }
+         }
 
     // Safely render a skill (could be string or object)
     const renderSkill = s => (typeof s === 'string' ? s : s.name)

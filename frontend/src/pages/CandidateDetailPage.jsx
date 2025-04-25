@@ -119,12 +119,14 @@ export default function CandidateDetailPage() {
                             <span>{cand.phone}</span>
                         </div>
                     )}
-                    <div className="flex items-center space-x-2">
-                        <CalendarIcon className="w-5 h-5 text-gray-600" />
-                        <span>
-              Uploaded {format(parseISO(cand.uploadDate), "MMMM d, yyyy")}
-            </span>
-                    </div>
+                    {cand.uploadDate && (
+                        <div className="flex items-center space-x-2">
+                            <CalendarIcon className="w-5 h-5 text-gray-600" />
+                            <span>
+          Uploaded {format(parseISO(cand.uploadDate), "MMMM d, yyyy")}
+        </span>
+                        </div>
+                    )}
                     <div className="flex items-center space-x-2">
                         <File className="h-5 w-5 text-gray-500" />
                         <span>{cand.fileName}</span>
@@ -219,18 +221,18 @@ export default function CandidateDetailPage() {
 
             {/* skills */}
             {cand.skills?.length > 0 && (
-                <Card>
-                    <CardHeader>
+            <Card>
+                <CardHeader>
                         <CardTitle>Skills</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex flex-wrap gap-2">
-                        {cand.skills.map((s) => (
-                            <Badge key={s.name} variant="secondary">
-                                {s.name}
-                            </Badge>
+                </CardHeader>
+                   <CardContent className="flex flex-wrap gap-2">
+                        {cand.skills.map((skill) => (
+                        <Badge key={skill.id} variant="secondary">
+                            {skill.name}
+                        </Badge>
                         ))}
                     </CardContent>
-                </Card>
+            </Card>
             )}
 
             {/* experience with real bullets */}
@@ -241,12 +243,14 @@ export default function CandidateDetailPage() {
                     </CardHeader>
                     <CardContent>
                         <ul className="list-disc list-inside space-y-1">
-                            {cand.experiences.flatMap((exp) =>
+                            {cand.experiences.map((exp, expIdx) =>
                                 exp.description
-                                    .split(";")
+                                    .split(/;|\r?\n/)
                                     .map((line) => line.trim())
                                     .filter(Boolean)
-                                    .map((line, idx) => <li key={`${exp.id}-${idx}`}>{line}</li>)
+                                    .map((line, lineIdx) => (
+                                        <li key={`${expIdx}-${lineIdx}`}>{line}</li>
+                                    ))
                             )}
                         </ul>
                     </CardContent>
