@@ -15,12 +15,11 @@ RUN --mount=type=cache,target=/root/.m2 \
 # Run stage
 FROM eclipse-temurin:17-jre-alpine
 
-# 1) Install Python3, pip, venv, and build tools
-# Added python3-venv package
+# 1) Install Python3, pip, and build tools
+# Removed python3-venv as it's typically included in the python3 package
 RUN apk add --no-cache \
       python3 \
       py3-pip \
-      python3-venv \
       build-base \
       libffi-dev \
       openssl-dev \
@@ -31,6 +30,7 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # 2) Create a virtual environment
+# This command should work as 'venv' module comes with 'python3'
 RUN python3 -m venv /opt/venv
 
 # 3) Activate the virtual environment for subsequent RUN commands and set PATH
@@ -42,13 +42,11 @@ COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
 COPY --from=builder /app/scripts ./scripts
 
 # 5) Install CPU-only torch from the PyTorch index (within the venv)
-# No need to prefix with 'source /opt/venv/bin/activate &&' because PATH is set
 RUN pip install --no-cache-dir \
       torch==1.13.1+cpu \
       --index-url https://download.pytorch.org/whl/cpu
 
 # 6) Install the rest of your Python dependencies (within the venv)
-# Combined the remaining pip installs into one layer
 RUN pip install --no-cache-dir \
       sentence-transformers \
       docx2pdf \
