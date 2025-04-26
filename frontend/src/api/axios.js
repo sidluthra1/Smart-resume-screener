@@ -3,7 +3,7 @@ import axios from "axios";
 
 // Create an Axios instance with a base URL pointing to your Spring Boot backend
 const api = axios.create({
-    baseURL: "http://localhost:8080", // your Spring Boot URL
+    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8080', // your Spring Boot URL
 });
 
 // Add a request interceptor to automatically add the JWT Authorization header
