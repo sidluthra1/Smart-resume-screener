@@ -1,32 +1,34 @@
-# 1) build your Spring Boot jar with Maven (no change here)
+# Build stage
 FROM maven:3.9.9-eclipse-temurin-17-alpine AS builder
+
 WORKDIR /app
 COPY pom.xml .
-RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 mvn dependency:go-offline -B
+RUN --mount=type=cache,id=m2-target,target=/root/.m2 \
+    mvn dependency:go-offline -B
+
 COPY . .
-RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 mvn package -DskipTests
+RUN --mount=type=cache,id=m2-target,target=/root/.m2 \
+    mvn package -DskipTests
 
-# 2) run stage on Debian-slim so pip can pull torch wheels
-FROM eclipse-temurin:17-jre-slim
+# Run stage — use Debian-slim so we can install torch wheels
+FROM openjdk:17-slim
 
-# install python3, pip and build deps
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      python3 python3-pip build-essential libffi-dev libssl-dev \
- && ln -sf /usr/bin/python3 /usr/bin/python \
- && rm -rf /var/lib/apt/lists/*
+# 1) Install Python3, pip, and build deps
+RUN apt-get update && apt-get install -y \
+      python3 python3-pip build-essential libffi-dev libssl-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# copy in your Spring Boot jar
+# 2) Copy in your Spring Boot jar
 COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
 
-# copy your python scripts folder
+# 3) Copy your Python scripts
 COPY --from=builder /app/scripts ./scripts
 
-# install all python deps, including torch + sentence-transformers CPU wheel
+# 4) Install a CPU-only torch wheel first, then the rest of your Python deps
 RUN pip3 install --no-cache-dir \
-      torch --index-url https://download.pytorch.org/whl/cpu \
+      torch==1.13.1+cpu --index-url https://download.pytorch.org/whl/cpu \
       sentence-transformers \
       docx2pdf \
       python-docx \
