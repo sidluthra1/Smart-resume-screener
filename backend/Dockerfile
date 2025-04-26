@@ -1,18 +1,16 @@
-# 1) Build stage
-FROM maven:3.8.7-jdk-17-slim AS builder
+# Build stage
+FROM maven:3.9.9-eclipse-temurin-17-alpine AS builder
+
 WORKDIR /app
 COPY pom.xml .
-COPY src ./src
-RUN mvn package -DskipTests
+RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 mvn dependency:go-offline -B
 
-# 2) Run stage
-FROM eclipse-temurin:17-jre-jammy
+COPY . .
+RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 mvn package -DskipTests
+
+# Run stage
+FROM eclipse-temurin:17-jre-alpine
+
 WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
-
-# configure an uploads directory
-ENV FILE_UPLOAD_DIR=/tmp/uploads
-VOLUME ["${FILE_UPLOAD_DIR}"]
-
-EXPOSE 8080
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
+ENTRYPOINT ["java","-jar","app.jar"]
