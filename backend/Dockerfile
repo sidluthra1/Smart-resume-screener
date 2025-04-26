@@ -39,7 +39,10 @@ COPY --from=builder /app/scripts ./scripts
 RUN pip3 install --no-cache-dir --break-system-packages \
       docx2pdf \
       python-docx \
-      pdfminer.six
+      pdfminer.six \
+      reportlab \
+      openai \
+      sentence-transformers
 
 # 6) Expose port & start
 EXPOSE 8080
