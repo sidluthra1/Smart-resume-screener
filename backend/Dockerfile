@@ -18,9 +18,9 @@ RUN --mount=type=cache,target=/root/.m2 \
 
 ############################################################
 # Run stage
-# Using Temurin 17 JRE on Debian Bullseye for compatibility with pre-compiled Python wheels
+# Using Temurin 17 JRE on Ubuntu Jammy for compatibility with pre-compiled Python wheels
 ############################################################
-FROM eclipse-temurin:17-jre-bullseye
+FROM eclipse-temurin:17-jre-jammy  # <-- Corrected Base Image
 
 # 1) Install Python3, pip, venv, dev headers, build tools, and other dependencies using apt-get
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -51,13 +51,13 @@ COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
 COPY --from=builder /app/scripts ./scripts
 
 # 5) Install CPU-only torch from the PyTorch index (within the venv)
-# Using version 2.3.0 based on previous attempts, should find compatible wheels for Debian/Python3.9
+# Using version 2.3.0 based on previous attempts. Check PyTorch docs for wheels for Python on Jammy (usually 3.10).
 RUN pip install --no-cache-dir \
       torch==2.3.0+cpu \
       --index-url https://download.pytorch.org/whl/cpu
 
 # 6) Install the rest of your Python dependencies (within the venv)
-# These should install much faster using pre-compiled wheels on Debian
+# These should install much faster using pre-compiled wheels on Ubuntu Jammy
 RUN pip install --no-cache-dir \
       sentence-transformers \
       docx2pdf \
