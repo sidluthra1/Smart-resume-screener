@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/root/.m2 \
 # Run stage
 # Using Temurin 17 JRE on Ubuntu Jammy for compatibility with pre-compiled Python wheels
 ############################################################
-FROM eclipse-temurin:17-jre-jammy  # <-- Corrected Base Image
+FROM eclipse-temurin:17-jre-jammy
 
 # 1) Install Python3, pip, venv, dev headers, build tools, and other dependencies using apt-get
 RUN apt-get update && apt-get install -y --no-install-recommends \
