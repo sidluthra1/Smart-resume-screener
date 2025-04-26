@@ -14,12 +14,12 @@ export default function JobDetailPage() {
     const [job, setJob] = useState(null)
 
     useEffect(() => {
-        const token = localStorage.getItem('jwt')
-        fetch('/job/all', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-            .then(r => r.json())
-            .then(list => setJob(list.find(j => String(j.id) === id)))
+        api
+            .get('/job/all')
+            .then(res => {
+                const found = res.data.find(j => String(j.id) === id)
+                setJob(found)
+            })
             .catch(console.error)
     }, [id])
 
