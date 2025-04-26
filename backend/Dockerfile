@@ -13,18 +13,26 @@ RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 \
 # Run stage
 FROM eclipse-temurin:17-jre-alpine
 
-# 1) Install Python3
-RUN apk add --no-cache python3
+# 1) Install Python3 + pip3
+RUN apk add --no-cache python3 py3-pip
 
-# 2) (Optional) Make sure "python" is python3
+# 2) (Optional) make `python` point to python3
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
 
-# 3) Copy the Spring Boot jar
+# 3) Copy in your Spring Boot jar
 COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
 
-# 4) Copy your Python scripts into /app/scripts
+# 4) Copy your Python scripts
 COPY --from=builder /app/scripts ./scripts
 
+# 5) Install all the Python libs your parsers need
+RUN pip3 install --no-cache-dir \
+        docx2pdf \
+        python-docx \
+        pdfminer.six
+
+# 6) Expose port and launch
+EXPOSE 8080
 ENTRYPOINT ["java","-jar","app.jar"]
