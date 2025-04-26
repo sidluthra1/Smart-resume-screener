@@ -64,6 +64,7 @@ RUN pip install --no-cache-dir \
       python-docx \
       pdfminer.six \
       reportlab \
+      pdfplumber \
       openai
 
 # Expose the port the Spring Boot application listens on
