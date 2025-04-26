@@ -1,49 +1,38 @@
-# Build stage
+# 1) build your Spring Boot jar with Maven (no change here)
 FROM maven:3.9.9-eclipse-temurin-17-alpine AS builder
-
 WORKDIR /app
 COPY pom.xml .
-RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 \
-    mvn dependency:go-offline -B
-
+RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 mvn dependency:go-offline -B
 COPY . .
-RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 \
-    mvn package -DskipTests
+RUN --mount=type=cache,id=your-m2-cache,target=/root/.m2 mvn package -DskipTests
 
-# Run stage
-FROM eclipse-temurin:17-jre-alpine
+# 2) run stage on Debian-slim so pip can pull torch wheels
+FROM eclipse-temurin:17-jre-slim
 
-# 1) Install Python3, pip3, and build tools for native extensions
-RUN apk add --no-cache \
-      python3 \
-      py3-pip \
-      build-base \
-      libffi-dev \
-      openssl-dev \
-      zlib-dev \
-      libjpeg-turbo-dev \
-    && ln -sf /usr/bin/python3 /usr/bin/python
-
-# 2) Make sure `python` → python3
-RUN ln -sf /usr/bin/python3 /usr/bin/python
+# install python3, pip and build deps
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      python3 python3-pip build-essential libffi-dev libssl-dev \
+ && ln -sf /usr/bin/python3 /usr/bin/python \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 3) Copy your Spring Boot jar
+# copy in your Spring Boot jar
 COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
 
-# 4) Copy in your Python scripts
+# copy your python scripts folder
 COPY --from=builder /app/scripts ./scripts
 
-# 5) Install the Python dependencies
-RUN pip3 install --no-cache-dir --break-system-packages \
+# install all python deps, including torch + sentence-transformers CPU wheel
+RUN pip3 install --no-cache-dir \
+      torch --index-url https://download.pytorch.org/whl/cpu \
+      sentence-transformers \
       docx2pdf \
       python-docx \
       pdfminer.six \
       reportlab \
-      openai \
-      sentence-transformers
+      openai
 
-# 6) Expose port & start
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","app.jar"]
