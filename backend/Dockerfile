@@ -60,6 +60,11 @@ RUN pip install --no-cache-dir \
 # These should install much faster using pre-compiled wheels on Ubuntu Jammy
 RUN pip install --no-cache-dir \
       sentence-transformers \
+      numpy \
+      scipy \
+      scikit-learn \
+      sentencepiece \
+      transformers \
       docx2pdf \
       python-docx \
       pdfminer.six \
