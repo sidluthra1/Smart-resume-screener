@@ -20,6 +20,7 @@ FROM eclipse-temurin:17-jre-alpine
 RUN apk add --no-cache \
       python3 \
       py3-pip \
+      python3-dev \
       build-base \
       libffi-dev \
       openssl-dev \
