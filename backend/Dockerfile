@@ -43,7 +43,7 @@ COPY --from=builder /app/scripts ./scripts
 
 # 5) Install CPU-only torch from the PyTorch index (within the venv)
 RUN pip install --no-cache-dir \
-      torch==1.13.1+cpu \
+      torch==2.3.0+cpu \
       --index-url https://download.pytorch.org/whl/cpu
 
 # 6) Install the rest of your Python dependencies (within the venv)
