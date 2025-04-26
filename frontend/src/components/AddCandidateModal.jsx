@@ -9,7 +9,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { useForm } from "react-hook-form";
 import { Loader2 } from "lucide-react";
-import axios from "axios";
+import api from "../api/axios";
 
 export default function AddCandidateModal({ open, onOpenChange, onSuccess }) {
     const { register, handleSubmit, reset } = useForm();
@@ -23,12 +23,7 @@ export default function AddCandidateModal({ open, onOpenChange, onSuccess }) {
         form.append("file", data.file[0]);
 
         try {
-            await axios.post("/resume/upload", form, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "multipart/form-data",
-                },
-            });
+            await api.post("/resume/upload", form);
             reset();
             onOpenChange(false);
             onSuccess();

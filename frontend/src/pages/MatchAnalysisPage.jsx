@@ -38,11 +38,22 @@ export default function MatchAnalysisPage() {
             .catch(() => setError("Failed to load resume analysis"));
     }, [resumeId]);
 
-    // ── rendering helpers ────────────────────────────────────────────────
-    const barColor = v => v >= 75 ? "bg-green-500" : v >= 50 ? "bg-yellow-500" : "bg-red-500";
 
     if (error)      return <p className="p-6 text-red-600">{error}</p>;
     if (!resume)    return <p className="p-6">Loading…</p>;
+
+    // helper to pick bar color
+    const barColor = (v) =>
+        v >= 75 ? "bg-green-500" :
+            v >= 50 ? "bg-yellow-500" :
+                "bg-red-500";
+
+    // text color to match dashboard badge style
+    const textColor = (v) =>
+        v >= 75 ? "text-green-600" :
+            v >= 50 ? "text-yellow-600" :
+                "text-red-600";
+
 
     const breakdown = [
         { label: "Skills Match",     value: resume.skillsScore     },
@@ -80,7 +91,8 @@ export default function MatchAnalysisPage() {
             <Card>
                 <CardHeader><CardTitle>Overall Score</CardTitle></CardHeader>
                 <CardContent className="flex justify-center py-8">
-                    <span className="text-6xl font-extrabold text-yellow-600">
+                    <span className={`text-6xl font-extrabold ${textColor(resume.matchScore)}`}
+                    >
                         {resume.matchScore.toFixed(0)}%
                     </span>
                 </CardContent>
