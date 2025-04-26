@@ -21,7 +21,8 @@ RUN apk add --no-cache \
       libffi-dev \
       openssl-dev \
       zlib-dev \
-      libjpeg-turbo-dev
+      libjpeg-turbo-dev \
+    && ln -sf /usr/bin/python3 /usr/bin/python
 
 # 2) Make sure `python` → python3
 RUN ln -sf /usr/bin/python3 /usr/bin/python
@@ -35,7 +36,7 @@ COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
 COPY --from=builder /app/scripts ./scripts
 
 # 5) Install the Python dependencies
-RUN pip3 install --no-cache-dir \
+RUN pip3 install --no-cache-dir --break-system-packages \
       docx2pdf \
       python-docx \
       pdfminer.six
