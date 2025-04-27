@@ -1,64 +1,40 @@
-# Build stage
-# Using Maven on Temurin 17 Alpine to build the Java application
+# 1) Build Stage --------------------------------------------------------
 FROM maven:3.9.9-eclipse-temurin-17-alpine AS builder
-
 WORKDIR /app
 
-# Copy POM and download dependencies using cache mount for efficiency
+# cache Maven downloads
 COPY pom.xml .
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn dependency:go-offline -B
+RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -B
 
-# Copy the rest of the source code
+# build your JAR
 COPY . .
+RUN --mount=type=cache,target=/root/.m2 mvn package -DskipTests
 
-# Build the application using cache mount, skipping tests
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn package -DskipTests
 
-############################################################
-# Run stage
-# Using Temurin 17 JRE on Ubuntu Jammy for compatibility with pre-compiled Python wheels
-############################################################
+# 2) Runtime Stage ------------------------------------------------------
 FROM eclipse-temurin:17-jre-jammy
 
-# 1) Install Python3, pip, venv, dev headers, build tools, and other dependencies using apt-get
+# install python, venv, build-tools, system libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 \
-      python3-pip \
-      python3-venv \
-      python3-dev \
-      build-essential \
-      libffi-dev \
-      libssl-dev \
-      zlib1g-dev \
-      libjpeg-dev \
-    # Clean up apt cache to reduce image size
+      python3 python3-venv python3-dev build-essential \
+      libffi-dev libssl-dev zlib1g-dev libjpeg-dev \
     && rm -rf /var/lib/apt/lists/* \
-    # Link python3 to python (optional, but can help scripts expecting 'python')
+    # ensure "python" points to python3
     && ln -sf /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
 
-# 2) Create a Python virtual environment
-RUN python3 -m venv /opt/venv
-
-# 3) Add venv bin to PATH - ensures subsequent commands use the venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# 4) Copy the compiled Spring Boot jar and Python scripts from the builder stage
+# copy your Spring Boot JAR and Python scripts
 COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
 COPY --from=builder /app/scripts ./scripts
 
-# 5) Install CPU-only torch from the PyTorch index (within the venv)
-# Using version 2.3.0 based on previous attempts. Check PyTorch docs for wheels for Python on Jammy (usually 3.10).
-RUN pip install --no-cache-dir \
-      torch==2.3.0+cpu \
-      --index-url https://download.pytorch.org/whl/cpu
+# create & activate a venv in one layer
+RUN python -m venv venv
+ENV PATH="/app/venv/bin:$PATH"
 
-# 6) Install the rest of your Python dependencies (within the venv)
-# These should install much faster using pre-compiled wheels on Ubuntu Jammy
+# install PyTorch + all other deps in one shot
 RUN pip install --no-cache-dir \
+      torch==2.3.0+cpu --index-url https://download.pytorch.org/whl/cpu \
       sentence-transformers \
       numpy \
       scipy \
@@ -72,8 +48,9 @@ RUN pip install --no-cache-dir \
       pdfplumber \
       openai
 
-# Expose the port the Spring Boot application listens on
+# ensure your JwtUtil / AuthService picks up this venv-python
+ENV ai.python-executable=python
+
 EXPOSE 8080
 
-# Set the entrypoint to run the Spring Boot application
-ENTRYPOINT ["java","-jar","app.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
