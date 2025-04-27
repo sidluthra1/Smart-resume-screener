@@ -29,8 +29,9 @@ COPY --from=builder /app/target/backend-0.0.1-SNAPSHOT.jar app.jar
 COPY --from=builder /app/scripts ./scripts
 
 # create & activate a venv in one layer
-RUN python -m venv venv
+RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
+ENV AI_PYTHON_EXECUTABLE=/app/venv/bin/python
 
 # install PyTorch + all other deps in one shot
 RUN pip install --no-cache-dir \
