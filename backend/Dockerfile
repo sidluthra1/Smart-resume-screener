@@ -34,7 +34,8 @@ ENV PATH="/app/venv/bin:$PATH"
 
 # install PyTorch + all other deps in one shot
 RUN pip install --no-cache-dir \
-      torch==2.3.0+cpu --index-url https://download.pytorch.org/whl/cpu \
+      --extra-index-url https://download.pytorch.org/whl/cpu \
+      torch==2.3.0+cpu \
       sentence-transformers \
       numpy \
       scipy \
