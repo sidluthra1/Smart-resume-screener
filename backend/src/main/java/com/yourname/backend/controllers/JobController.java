@@ -19,9 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,11 +35,11 @@ import static com.yourname.backend.util.CitationCleaner.strip;
 public class JobController {
 
     private static final Logger log = LoggerFactory.getLogger(JobController.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final JobDescriptionRepository jobRepo;
-    private final StorageService           storageService;
-    private final SkillService             skillService;
-    private final ObjectMapper             JSON = new ObjectMapper();
+    private final StorageService storageService;
+    private final SkillService skillService;
 
     @Value("${python.text-extractor}")
     private String TEXT_EXTRACTOR;
@@ -53,45 +51,38 @@ public class JobController {
     private String PYTHON;
 
     @Autowired
-    public JobController(JobDescriptionRepository jobRepo,
-                         StorageService storageService,
-                         SkillService skillService) {
-        this.jobRepo        = jobRepo;
+    public JobController(
+            JobDescriptionRepository jobRepo,
+            StorageService storageService,
+            SkillService skillService
+    ) {
+        this.jobRepo = jobRepo;
         this.storageService = storageService;
-        this.skillService   = skillService;
+        this.skillService = skillService;
     }
 
     /* ------------------------------------------------------------------
        Manual entry via JSON → treat as .txt + parse
-       ------------------------------------------------------------------ */
+    ------------------------------------------------------------------ */
     @PostMapping(path = "/createManual",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public JobDescriptionDto createManual(@RequestBody JobRequest req) throws Exception {
-        // 1) write the raw descriptionText to a temp .txt file
         Path tmp = Files.createTempFile("job-", ".txt");
         Files.writeString(tmp, req.getDescriptionText(), StandardCharsets.UTF_8);
         String jdPath = tmp.toAbsolutePath().toString();
 
-        // 2) invoke your parser (it can extract text & fields for .txt)
-        //    you can skip TEXT_EXTRACTOR if your JOB_PARSER handles raw text directly;
-        //    otherwise uncomment the next line to pull plain text:
-        // String plainTxt = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
-        String plainTxt   = req.getDescriptionText();
+        // no need for TEXT_EXTRACTOR here if JOB_PARSER handles raw text
         String parsedJson = runPython(JOB_PARSER, jdPath);
-        JsonNode n        = JSON.readTree(parsedJson);
+        JsonNode n = JSON.readTree(parsedJson);
 
-        // 3) extract all fields
-        String summary    = n.path("Job Description").asText(null);
-        String category   = n.path("Job Category").asText(null);
-        String location   = n.path("Location").asText(null);
+        String summary = n.path("Job Description").asText(null);
+        String category = n.path("Job Category").asText(null);
+        String location = n.path("Location").asText(null);
 
         List<String> skillsList = toStringList(n.path("skills"));
         Set<Skill> skills = skillService.fetchOrCreateSkills(
-                skillsList.stream()
-                        .map(String::trim)
-                        .filter(s -> !s.isBlank())
-                        .collect(Collectors.toSet())
+                skillsList.stream().map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet())
         );
 
         List<String> reqList  = JSON.convertValue(
@@ -103,42 +94,39 @@ public class JobController {
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)
         );
 
-        // 4) build & persist
         JobDescription jd = new JobDescription();
         jd.setTitle(req.getTitle());
         jd.setCategory(category);
         jd.setLocation(location);
-        jd.setDescriptionText(plainTxt);
+        jd.setDescriptionText(req.getDescriptionText());
         jd.setSummary(strip(summary));
         jd.setSkills(skills);
         jd.setRequirements(strip(String.join(", ", reqList)));
         jd.setResponsibilities(strip(String.join(", ", respList)));
         jd.setParsedJson(parsedJson);
         jd.setFilePath(jdPath);
-        // status defaults to "Active" in your entity
 
         JobDescription saved = jobRepo.save(jd);
-
-        // 5) return DTO
         return toDto(saved, skillsList, reqList, respList);
     }
 
     /* ------------------------------------------------------------------
-       File‐upload path (unchanged)
-       ------------------------------------------------------------------ */
+       File-upload path
+    ------------------------------------------------------------------ */
     @PostMapping(path = "/uploadFile",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public JobDescriptionDto uploadFile(@RequestParam("file")  @NotNull MultipartFile file,
-                                        @RequestParam("title") @NotNull String        title)
-            throws Exception {
+    public JobDescriptionDto uploadFile(
+            @RequestParam("file") @NotNull MultipartFile file,
+            @RequestParam("title") @NotNull String title
+    ) throws Exception {
         if (file.isEmpty())
             throw new IllegalArgumentException("File is empty");
 
-        String jdPath     = storageService.store(file);
-        String plainTxt   = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
-        String parsedJson = runPython(JOB_PARSER,        jdPath);
-        JsonNode n        = JSON.readTree(parsedJson);
+        String jdPath = storageService.store(file);
+        String plainTxt = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
+        String parsedJson = runPython(JOB_PARSER, jdPath);
+        JsonNode n = JSON.readTree(parsedJson);
 
         String summary = n.path("Job Description").asText(null);
         List<String> skillsList = toStringList(n.path("skills"));
@@ -170,9 +158,6 @@ public class JobController {
         return toDto(saved, skillsList, reqList, respList);
     }
 
-    /* ------------------------------------------------------------------
-       GET all jobs
-       ------------------------------------------------------------------ */
     @GetMapping("/all")
     public List<JobDescriptionDto> list() {
         return jobRepo.findAll().stream()
@@ -207,9 +192,10 @@ public class JobController {
         return ResponseEntity.noContent().build();
     }
 
-    /* ==================================================================
-       Helpers
-       ================================================================== */
+    //─────────────────────────────────────────────────────────────────────
+    // Helpers
+    //─────────────────────────────────────────────────────────────────────
+
     private List<String> toStringList(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) return List.of();
         if (node.isArray()) {
@@ -251,36 +237,91 @@ public class JobController {
         );
     }
 
-    private String runPython(String script, String... args)
-            throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(PYTHON, script);
-        pb.command().addAll(List.of(args));
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (p.waitFor() != 0) {
-            log.error("{} failed →\n{}", script, out);
-            throw new RuntimeException(script + " failed – see logs");
+    private String runPython(String script, String... args) throws IOException, InterruptedException {
+        List<String> cmd = new ArrayList<>();
+        cmd.add(PYTHON);
+        cmd.add(new File(script).getAbsolutePath());
+        cmd.addAll(Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(new File("/app"));
+
+        Process proc = pb.start();
+
+        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
+        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+        Thread tOut = new Thread(() -> {
+            try (InputStream is = proc.getInputStream()) { is.transferTo(outBuf); }
+            catch (IOException ignored) {}
+        });
+        Thread tErr = new Thread(() -> {
+            try (InputStream is = proc.getErrorStream()) { is.transferTo(errBuf); }
+            catch (IOException ignored) {}
+        });
+        tOut.start(); tErr.start();
+
+        int exit = proc.waitFor();
+        tOut.join(); tErr.join();
+
+        String stdout = outBuf.toString(StandardCharsets.UTF_8);
+        String stderr = errBuf.toString(StandardCharsets.UTF_8);
+
+        log.debug("Command {} exited {}. stdout:\\n{}\\nstderr:\\n{}",
+                cmd, exit, stdout, stderr);
+
+        if (exit != 0) {
+            throw new RuntimeException(
+                    String.format("Script %s failed (exit %d)\nstderr:%s", script, exit, stderr)
+            );
         }
-        return out.trim();
+        return stdout.trim();
     }
 
-    private String runPythonCaptureText(String script, String... args)
-            throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(PYTHON, script);
-        pb.command().addAll(List.of(args));
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        String last = null;
-        try (BufferedReader r = new BufferedReader(
-                new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = r.readLine()) != null) last = line;
+    private String runPythonCaptureText(String script, String... args) throws IOException, InterruptedException {
+        List<String> cmd = new ArrayList<>();
+        cmd.add(PYTHON);
+        cmd.add(new File(script).getAbsolutePath());
+        cmd.addAll(Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(new File("/app"));
+
+        Process proc = pb.start();
+
+        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
+        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+        Thread tOut = new Thread(() -> {
+            try (InputStream is = proc.getInputStream()) { is.transferTo(outBuf); }
+            catch (IOException ignored) {}
+        });
+        Thread tErr = new Thread(() -> {
+            try (InputStream is = proc.getErrorStream()) { is.transferTo(errBuf); }
+            catch (IOException ignored) {}
+        });
+        tOut.start(); tErr.start();
+
+        int exit = proc.waitFor();
+        tOut.join(); tErr.join();
+
+        String stdout = outBuf.toString(StandardCharsets.UTF_8);
+        String stderr = errBuf.toString(StandardCharsets.UTF_8);
+
+        log.debug("Command {} exited {}. stdout:\\n{}\\nstderr:\\n{}",
+                cmd, exit, stdout, stderr);
+
+        if (exit != 0) {
+            throw new RuntimeException(
+                    String.format("Script %s failed (exit %d)\nstderr:%s", script, exit, stderr)
+            );
         }
-        if (p.waitFor() != 0) {
-            log.error("{} failed (last line: {})", script, last);
-            throw new RuntimeException(script + " failed – see logs");
+
+        // if the extractor returns {"text": "..."} JSON, pull out "text"
+        try {
+            JsonNode n = JSON.readTree(stdout);
+            return n.path("text").asText(stdout.trim());
+        } catch (Exception e) {
+            log.warn("Failed to parse JSON text from {}, returning raw stdout", script, e);
+            return stdout.trim();
         }
-        return last != null ? last : "";
     }
 }

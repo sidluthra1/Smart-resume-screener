@@ -3,7 +3,9 @@ package com.yourname.backend.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourname.backend.dto.ResumeDto;
-import com.yourname.backend.entities.*;
+import com.yourname.backend.entities.JobDescription;
+import com.yourname.backend.entities.Resume;
+import com.yourname.backend.entities.Experience;
 import com.yourname.backend.repositories.JobDescriptionRepository;
 import com.yourname.backend.repositories.ResumeRepository;
 import com.yourname.backend.services.AiService;
@@ -14,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +24,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.*;
@@ -38,6 +40,7 @@ import java.util.stream.Collectors;
 public class ResumeController {
 
     private static final Logger log = LoggerFactory.getLogger(ResumeController.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final ResumeRepository resumeRepo;
     private final JobDescriptionRepository jobRepo;
@@ -61,14 +64,14 @@ public class ResumeController {
     @Value("${ai.python-executable:python3}")
     private String PYTHON;
 
-    private static final ObjectMapper JSON = new ObjectMapper();
-
     @Autowired
-    public ResumeController(ResumeRepository resumeRepo,
-                            JobDescriptionRepository jobRepo,
-                            StorageService storageService,
-                            AiService aiService,
-                            SkillService skillService) {
+    public ResumeController(
+            ResumeRepository resumeRepo,
+            JobDescriptionRepository jobRepo,
+            StorageService storageService,
+            AiService aiService,
+            SkillService skillService
+    ) {
         this.resumeRepo = resumeRepo;
         this.jobRepo = jobRepo;
         this.storageService = storageService;
@@ -77,14 +80,14 @@ public class ResumeController {
     }
 
     private static void applyScores(Resume r, AiService.ScoreBundle s) {
-        if (s == null) return;   // not scored yet
-        r.setMatchScore     (s.finalScore());
-        r.setSemanticScore  (s.semanticScore());
-        r.setSkillsScore    (s.skillsScore());
-        r.setEducationScore (s.educationScore());
+        if (s == null) return;
+        r.setMatchScore(s.finalScore());
+        r.setSemanticScore(s.semanticScore());
+        r.setSkillsScore(s.skillsScore());
+        r.setEducationScore(s.educationScore());
         r.setExperienceScore(s.experienceScore());
-        r.setOverlapScore        (s.overlap());
-        r.setLlmmScore      (s.llmScore());
+        r.setOverlapScore(s.overlap());
+        r.setLlmmScore(s.llmScore());
     }
 
     @PatchMapping("/{id}/status")
@@ -96,7 +99,6 @@ public class ResumeController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         r.setStatus(newStatus);
         Resume saved = resumeRepo.save(r);
-        // return updated DTO
         return ResponseEntity.ok(toDto(saved, null));
     }
 
@@ -129,12 +131,14 @@ public class ResumeController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+    @PostMapping(path = "/upload",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResumeDto upload(@RequestParam("file")          @NotNull MultipartFile file,
-                            @RequestParam("candidateName") @NotNull String candidateName,
-                            @RequestParam(value = "jobId", required = false) Long jobId)
-            throws Exception {
+    public ResumeDto upload(
+            @RequestParam("file") @NotNull MultipartFile file,
+            @RequestParam("candidateName") @NotNull String candidateName,
+            @RequestParam(value = "jobId", required = false) Long jobId
+    ) throws Exception {
 
         if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
         String ct = file.getContentType();
@@ -144,29 +148,40 @@ public class ResumeController {
 
         String resumePath = storageService.store(file);
 
-        // ── 1) Parse résumé
+        // 1) parse resume JSON
         String parsedResumeJson = runPython(RESUME_PARSER, resumePath);
-        ParsedResume parsedRes  = mapper.readValue(parsedResumeJson, ParsedResume.class);
-        String resumePlainTxt   = runPythonCaptureText(TEXT_EXTRACTOR, resumePath);
+        ParsedResume parsedRes = mapper.readValue(parsedResumeJson, ParsedResume.class);
+
+        // 2) extract text
+        String resumePlainTxt = runPythonCaptureText(TEXT_EXTRACTOR, resumePath);
 
         AiService.ScoreBundle scores = null;
         if (jobId != null) {
-            // ── 2) Parse job + run scoring
             JobDescription jd = jobRepo.findById(jobId)
                     .orElseThrow(() -> new IllegalArgumentException("Invalid jobId " + jobId));
+
             Path tmp = Files.createTempFile("job-", ".txt");
             Files.writeString(tmp, jd.getDescriptionText());
             String parsedJobJson = runPython(JOB_PARSER, tmp.toString());
-            double overlap = parseOverlap(runPythonCaptureText(SEMANTIC_MATCHER, resumePath, tmp.toString()));
+            double overlap = parseOverlap(
+                    runPythonCaptureText(SEMANTIC_MATCHER, resumePath, tmp.toString())
+            );
             Files.deleteIfExists(tmp);
-            scores = aiService.scoreResume(resumePlainTxt, jd.getDescriptionText(), parsedResumeJson, parsedJobJson, overlap);
+
+            scores = aiService.scoreResume(
+                    resumePlainTxt,
+                    jd.getDescriptionText(),
+                    parsedResumeJson,
+                    parsedJobJson,
+                    overlap
+            );
         }
 
-        // ── 3) Build entity & persist
+        // 3) persist
         Resume r = new Resume(file.getOriginalFilename(), candidateName, resumePath);
         r.setContentType(ct);
         r.setSize(file.getSize());
-        applyScores(r, scores);          // ← granular fields set here
+        applyScores(r, scores);
         if (jobId != null) r.setLastScoredJobId(jobId);
         r.setEmail(parsedRes.email);
         r.setPhone(parsedRes.phone_number);
@@ -174,11 +189,15 @@ public class ResumeController {
         r.setEducation(parsedRes.education);
         r.setStatus("New");
 
-        // skills & experiences
         Set<String> skillNames = Arrays.stream(parsedRes.skills.split(","))
-                .map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet());
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toSet());
         r.setSkills(skillService.fetchOrCreateSkills(skillNames));
-        Experience exp = new Experience(); exp.setDescription(parsedRes.work_experience); exp.setResume(r);
+
+        Experience exp = new Experience();
+        exp.setDescription(parsedRes.work_experience);
+        exp.setResume(r);
         r.getExperiences().add(exp);
 
         Resume saved = resumeRepo.save(r);
@@ -203,11 +222,11 @@ public class ResumeController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    private static double opt(Double v) { return v == null ? 0.0 : v; }
-
     @PostMapping(path = "/score", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ResumeDto> scoreExisting(@RequestParam("resumeId") Long resumeId,
-                                                   @RequestParam("jobId")    Long jobId) throws Exception {
+    public ResponseEntity<ResumeDto> scoreExisting(
+            @RequestParam("resumeId") Long resumeId,
+            @RequestParam("jobId") Long jobId
+    ) throws Exception {
         Resume r  = resumeRepo.findById(resumeId)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid resumeId " + resumeId));
         JobDescription jd = jobRepo.findById(jobId)
@@ -217,17 +236,23 @@ public class ResumeController {
         String parsedResumeJson = runPython(RESUME_PARSER, r.getFilePath());
         String jobTxtFile       = writeTempFile(jd.getDescriptionText());
         String parsedJobJson    = runPython(JOB_PARSER, jobTxtFile);
-        double overlapScore     = parseOverlap(runPythonCaptureText(SEMANTIC_MATCHER, r.getFilePath(), jobTxtFile));
+        double overlapScore     = parseOverlap(
+                runPythonCaptureText(SEMANTIC_MATCHER, r.getFilePath(), jobTxtFile)
+        );
 
         AiService.ScoreBundle scores = aiService.scoreResume(
-                resumePlainTxt, jd.getDescriptionText(), parsedResumeJson, parsedJobJson, overlapScore);
+                resumePlainTxt,
+                jd.getDescriptionText(),
+                parsedResumeJson,
+                parsedJobJson,
+                overlapScore
+        );
 
-        applyScores(r, scores);                    // ← granular fields updated here
+        applyScores(r, scores);
         r.setLastScoredJobId(jobId);
         resumeRepo.save(r);
         return ResponseEntity.ok(toDto(r, scores));
     }
-
 
     private String writeTempFile(String text) throws IOException {
         Path tmp = Files.createTempFile("job-", ".txt");
@@ -245,40 +270,106 @@ public class ResumeController {
         }
     }
 
+    private static double opt(Double v) {
+        return v == null ? 0.0 : v;
+    }
+
     private String runPython(String script, String... args) throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder();
-        pb.command().add(PYTHON);
-        pb.command().add(script);
-        pb.command().addAll(List.of(args));
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int exit = p.waitFor();
-        if (exit != 0) throw new RuntimeException(script + " failed: " + out);
-        return out.trim();
+        List<String> cmd = new ArrayList<>();
+        cmd.add(PYTHON);
+        cmd.add(new File(script).getAbsolutePath());
+        cmd.addAll(Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(new File("/app"));
+
+        Process proc = pb.start();
+
+        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
+        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+        Thread tOut = new Thread(() -> {
+            try (InputStream is = proc.getInputStream()) { is.transferTo(outBuf); }
+            catch (IOException ignored) {}
+        });
+        Thread tErr = new Thread(() -> {
+            try (InputStream is = proc.getErrorStream()) { is.transferTo(errBuf); }
+            catch (IOException ignored) {}
+        });
+        tOut.start(); tErr.start();
+
+        int exit = proc.waitFor();
+        tOut.join(); tErr.join();
+
+        String stdout = outBuf.toString(StandardCharsets.UTF_8);
+        String stderr = errBuf.toString(StandardCharsets.UTF_8);
+
+        log.debug("Command {} exited {}. stdout:\\n{}\\nstderr:\\n{}",
+                cmd, exit, stdout, stderr);
+
+        if (exit != 0) {
+            throw new RuntimeException(
+                    String.format("Script %s failed (exit %d)%nstderr:%s", script, exit, stderr)
+            );
+        }
+        return stdout.trim();
     }
 
     private String runPythonCaptureText(String script, String... args) throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder();
-        pb.command().add(PYTHON);
-        pb.command().add(script);
-        pb.command().addAll(List.of(args));
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        String line, last = null;
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-            while ((line = r.readLine()) != null) last = line;
+        List<String> cmd = new ArrayList<>();
+        cmd.add(PYTHON);
+        cmd.add(new File(script).getAbsolutePath());
+        cmd.addAll(Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(new File("/app"));
+
+        Process proc = pb.start();
+
+        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
+        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+        Thread tOut = new Thread(() -> {
+            try (InputStream is = proc.getInputStream()) { is.transferTo(outBuf); }
+            catch (IOException ignored) {}
+        });
+        Thread tErr = new Thread(() -> {
+            try (InputStream is = proc.getErrorStream()) { is.transferTo(errBuf); }
+            catch (IOException ignored) {}
+        });
+        tOut.start(); tErr.start();
+
+        int exit = proc.waitFor();
+        tOut.join(); tErr.join();
+
+        String stdout = outBuf.toString(StandardCharsets.UTF_8);
+        String stderr = errBuf.toString(StandardCharsets.UTF_8);
+
+        log.debug("Command {} exited {}. stdout:\\n{}\\nstderr:\\n{}",
+                cmd, exit, stdout, stderr);
+
+        if (exit != 0) {
+            throw new RuntimeException(
+                    String.format("Script %s failed (exit %d)%nstderr:%s", script, exit, stderr)
+            );
         }
-        if (p.waitFor() != 0) throw new RuntimeException(script + " failed");
-        return last == null ? "" : last.trim();
+
+        // parse JSON {"text": "..."} or return raw
+        try {
+            JsonNode n = JSON.readTree(stdout);
+            return n.path("text").asText("");
+        } catch (Exception e) {
+            log.warn("Failed to parse JSON from {} output, returning raw stdout", script, e);
+            return stdout.trim();
+        }
     }
 
     private ResumeDto toDto(Resume r, AiService.ScoreBundle scores) {
         Set<String> names = r.getSkills().stream()
-                .map(Skill::getName)
+                .map(skill -> skill.getName())
                 .collect(Collectors.toSet());
         return new ResumeDto(
-                r.getId(), r.getFileName(), r.getCandidateName(),
+                r.getId(),
+                r.getFileName(),
+                r.getCandidateName(),
                 scores == null ? 0.0 : scores.finalScore(),
                 scores == null ? 0.0 : scores.semanticScore(),
                 scores == null ? 0.0 : scores.skillsScore(),
@@ -286,8 +377,12 @@ public class ResumeController {
                 scores == null ? 0.0 : scores.experienceScore(),
                 scores == null ? 0.0 : scores.overlap(),
                 scores == null ? 0.0 : scores.llmScore(),
-                r.getEmail(), r.getPhone(), r.getSummary(), r.getEducation(),
-                names, r.getStatus()
+                r.getEmail(),
+                r.getPhone(),
+                r.getSummary(),
+                r.getEducation(),
+                names,
+                r.getStatus()
         );
     }
 
