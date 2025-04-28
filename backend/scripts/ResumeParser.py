@@ -4,8 +4,9 @@ import os
 import shutil
 import time
 from pathlib import Path
+import subprocess
+from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import LETTER
-import docx
 
 try:
     from docx2pdf import convert
@@ -118,7 +119,7 @@ def _convert_docx_to_pdf_text(src: Path, dst: Path) -> None:
 
 def ensure_pdf(src: Path) -> Path:
     """
-    Ensure we have a PDF; for .docx use either docx2pdf (if on Windows) or fallback.
+    Ensure we have a PDF; for .docx use LibreOffice, then docx2pdf, then fallback.
     """
     src = src.expanduser().resolve()
     suffix = src.suffix.lower()
@@ -128,18 +129,32 @@ def ensure_pdf(src: Path) -> Path:
         return src
 
     if suffix == ".docx":
+        # 1) Try LibreOffice headless conversion
         try:
-            from docx2pdf import convert as convert_win
-        except ImportError:
-            convert_win = None
+            subprocess.run(
+                ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(dst.parent), str(src)],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            if dst.exists():
+                return dst
+        except Exception:
+            pass
 
-        if convert_win:
-            convert_win(str(src), str(dst))
-        else:
-            _convert_docx_to_pdf_text(src, dst)
-        if not dst.exists():
-            raise RuntimeError(f"Conversion failed, no output at: {dst}")
-        return dst
+        # 2) Try docx2pdf if available (Windows/Word)
+        if convert:
+            try:
+                convert(str(src), str(dst))
+                if dst.exists():
+                    return dst
+            except Exception:
+                pass
+
+        # 3) Pure-Python fallback
+        _convert_docx_to_pdf_text(src, dst)
+        if dst.exists():
+            return dst
+
+        raise RuntimeError(f"Failed to convert '{src}' to PDF")
 
     raise ValueError(f"Unsupported extension '{src.suffix}'; only .docx or .pdf allowed")
 
@@ -153,6 +168,7 @@ def main():
         print(f"No such file: {src}", file=sys.stderr)
         sys.exit(1)
     openAIParser(src)
+
 
 if __name__ == "__main__":
     main()
