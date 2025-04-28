@@ -7,6 +7,7 @@ import docx
 import json
 from sentence_transformers import SentenceTransformer, util # Import necessary components
 import torch # Or tensorflow if you installed that backend
+import traceback
 
 
 # Keep the text extraction function as is, but add cleaning
@@ -111,4 +112,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+            main()
+        except Exception:
+            # print full Python stack trace to stderr (redirected into your Spring logs)
+            traceback.print_exc(file=sys.stderr)
+            sys.exit(1)
