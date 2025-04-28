@@ -28,6 +28,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -37,7 +38,6 @@ import java.util.stream.Collectors;
 public class ResumeController {
 
     private static final Logger log = LoggerFactory.getLogger(ResumeController.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final ResumeRepository resumeRepo;
     private final JobDescriptionRepository jobRepo;
@@ -61,14 +61,14 @@ public class ResumeController {
     @Value("${ai.python-executable:python3}")
     private String PYTHON;
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     @Autowired
-    public ResumeController(
-            ResumeRepository resumeRepo,
-            JobDescriptionRepository jobRepo,
-            StorageService storageService,
-            AiService aiService,
-            SkillService skillService
-    ) {
+    public ResumeController(ResumeRepository resumeRepo,
+                            JobDescriptionRepository jobRepo,
+                            StorageService storageService,
+                            AiService aiService,
+                            SkillService skillService) {
         this.resumeRepo = resumeRepo;
         this.jobRepo = jobRepo;
         this.storageService = storageService;
@@ -77,14 +77,14 @@ public class ResumeController {
     }
 
     private static void applyScores(Resume r, AiService.ScoreBundle s) {
-        if (s == null) return;
-        r.setMatchScore(s.finalScore());
-        r.setSemanticScore(s.semanticScore());
-        r.setSkillsScore(s.skillsScore());
-        r.setEducationScore(s.educationScore());
+        if (s == null) return;   // not scored yet
+        r.setMatchScore     (s.finalScore());
+        r.setSemanticScore  (s.semanticScore());
+        r.setSkillsScore    (s.skillsScore());
+        r.setEducationScore (s.educationScore());
         r.setExperienceScore(s.experienceScore());
-        r.setOverlapScore(s.overlap());
-        r.setLlmmScore(s.llmScore());
+        r.setOverlapScore        (s.overlap());
+        r.setLlmmScore      (s.llmScore());
     }
 
     @PatchMapping("/{id}/status")
@@ -96,6 +96,7 @@ public class ResumeController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         r.setStatus(newStatus);
         Resume saved = resumeRepo.save(r);
+        // return updated DTO
         return ResponseEntity.ok(toDto(saved, null));
     }
 
@@ -103,7 +104,7 @@ public class ResumeController {
     public ResponseEntity<Resource> download(@PathVariable Long id) throws Exception {
         Resume r = resumeRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        Path file = Path.of(r.getFilePath());
+        Path file = Paths.get(r.getFilePath());
         Resource resource = new UrlResource(file.toUri());
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -128,32 +129,29 @@ public class ResumeController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping(path = "/upload",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+    @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResumeDto upload(
-            @RequestParam("file") @NotNull MultipartFile file,
-            @RequestParam("candidateName") @NotNull String candidateName,
-            @RequestParam(value = "jobId", required = false) Long jobId
-    ) throws Exception {
+    public ResumeDto upload(@RequestParam("file")          @NotNull MultipartFile file,
+                            @RequestParam("candidateName") @NotNull String candidateName,
+                            @RequestParam(value = "jobId", required = false) Long jobId)
+            throws Exception {
 
         if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
         String ct = file.getContentType();
         if (!"application/pdf".equals(ct) &&
-                !"application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(ct)) {
+                !"application/vnd.openxmlformats-officedocument.wordprocessingml.document".equals(ct))
             throw new IllegalArgumentException("Only PDF or DOCX allowed");
-        }
 
         String resumePath = storageService.store(file);
 
-        // 1) Parse résumé
+        // ── 1) Parse résumé
         String parsedResumeJson = runPython(RESUME_PARSER, resumePath);
-        ParsedResume parsedRes = mapper.readValue(parsedResumeJson, ParsedResume.class);
-        String resumePlainTxt = runPythonCaptureText(TEXT_EXTRACTOR, resumePath);
+        ParsedResume parsedRes  = mapper.readValue(parsedResumeJson, ParsedResume.class);
+        String resumePlainTxt   = runPythonCaptureText(TEXT_EXTRACTOR, resumePath);
 
         AiService.ScoreBundle scores = null;
         if (jobId != null) {
-            // 2) Parse job + run scoring
+            // ── 2) Parse job + run scoring
             JobDescription jd = jobRepo.findById(jobId)
                     .orElseThrow(() -> new IllegalArgumentException("Invalid jobId " + jobId));
             Path tmp = Files.createTempFile("job-", ".txt");
@@ -161,20 +159,14 @@ public class ResumeController {
             String parsedJobJson = runPython(JOB_PARSER, tmp.toString());
             double overlap = parseOverlap(runPythonCaptureText(SEMANTIC_MATCHER, resumePath, tmp.toString()));
             Files.deleteIfExists(tmp);
-            scores = aiService.scoreResume(
-                    resumePlainTxt,
-                    jd.getDescriptionText(),
-                    parsedResumeJson,
-                    parsedJobJson,
-                    overlap
-            );
+            scores = aiService.scoreResume(resumePlainTxt, jd.getDescriptionText(), parsedResumeJson, parsedJobJson, overlap);
         }
 
-        // 3) Build entity & persist
+        // ── 3) Build entity & persist
         Resume r = new Resume(file.getOriginalFilename(), candidateName, resumePath);
         r.setContentType(ct);
         r.setSize(file.getSize());
-        applyScores(r, scores);
+        applyScores(r, scores);          // ← granular fields set here
         if (jobId != null) r.setLastScoredJobId(jobId);
         r.setEmail(parsedRes.email);
         r.setPhone(parsedRes.phone_number);
@@ -182,15 +174,11 @@ public class ResumeController {
         r.setEducation(parsedRes.education);
         r.setStatus("New");
 
+        // skills & experiences
         Set<String> skillNames = Arrays.stream(parsedRes.skills.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isBlank())
-                .collect(Collectors.toSet());
+                .map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet());
         r.setSkills(skillService.fetchOrCreateSkills(skillNames));
-
-        Experience exp = new Experience();
-        exp.setDescription(parsedRes.work_experience);
-        exp.setResume(r);
+        Experience exp = new Experience(); exp.setDescription(parsedRes.work_experience); exp.setResume(r);
         r.getExperiences().add(exp);
 
         Resume saved = resumeRepo.save(r);
@@ -215,12 +203,12 @@ public class ResumeController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    private static double opt(Double v) { return v == null ? 0.0 : v; }
+
     @PostMapping(path = "/score", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ResumeDto> scoreExisting(
-            @RequestParam("resumeId") Long resumeId,
-            @RequestParam("jobId")    Long jobId
-    ) throws Exception {
-        Resume r = resumeRepo.findById(resumeId)
+    public ResponseEntity<ResumeDto> scoreExisting(@RequestParam("resumeId") Long resumeId,
+                                                   @RequestParam("jobId")    Long jobId) throws Exception {
+        Resume r  = resumeRepo.findById(resumeId)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid resumeId " + resumeId));
         JobDescription jd = jobRepo.findById(jobId)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid jobId " + jobId));
@@ -229,25 +217,17 @@ public class ResumeController {
         String parsedResumeJson = runPython(RESUME_PARSER, r.getFilePath());
         String jobTxtFile       = writeTempFile(jd.getDescriptionText());
         String parsedJobJson    = runPython(JOB_PARSER, jobTxtFile);
-        double overlapScore     = parseOverlap(
-                runPythonCaptureText(SEMANTIC_MATCHER, r.getFilePath(), jobTxtFile)
-        );
+        double overlapScore     = parseOverlap(runPythonCaptureText(SEMANTIC_MATCHER, r.getFilePath(), jobTxtFile));
 
         AiService.ScoreBundle scores = aiService.scoreResume(
-                resumePlainTxt,
-                jd.getDescriptionText(),
-                parsedResumeJson,
-                parsedJobJson,
-                overlapScore
-        );
+                resumePlainTxt, jd.getDescriptionText(), parsedResumeJson, parsedJobJson, overlapScore);
 
-        applyScores(r, scores);
+        applyScores(r, scores);                    // ← granular fields updated here
         r.setLastScoredJobId(jobId);
         resumeRepo.save(r);
         return ResponseEntity.ok(toDto(r, scores));
     }
 
-    // ────────────────────────────────────────────────────────────────────
 
     private String writeTempFile(String text) throws IOException {
         Path tmp = Files.createTempFile("job-", ".txt");
@@ -266,33 +246,31 @@ public class ResumeController {
     }
 
     private String runPython(String script, String... args) throws IOException, InterruptedException {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(PYTHON);
-        cmd.add(new File(script).getAbsolutePath());
-        cmd.addAll(Arrays.asList(args));
-        ProcessBuilder pb = new ProcessBuilder(cmd);
+        ProcessBuilder pb = new ProcessBuilder();
+        pb.command().add(PYTHON);
+        pb.command().add(script);
+        pb.command().addAll(List.of(args));
+        pb.redirectErrorStream(true);
         Process p = pb.start();
-
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ByteArrayOutputStream err = new ByteArrayOutputStream();
-        p.getInputStream().transferTo(out);
-        p.getErrorStream().transferTo(err);
-
+        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int exit = p.waitFor();
-        log.debug("runPython `{}` exited {}. stderr:\n{}", script, exit, err);
-        if (exit != 0) {
-            throw new RuntimeException("Script " + script + " failed – see logs");
-        }
-        return out.toString(StandardCharsets.UTF_8).trim();
+        if (exit != 0) throw new RuntimeException(script + " failed: " + out);
+        return out.trim();
     }
 
-    private String runPythonCaptureText(String script, String... args) {
-        try {
-            return runPython(script, args);
-        } catch (Exception e) {
-            log.warn("Text extractor failed on `{}`: {}", script, e.getMessage());
-            return "";
+    private String runPythonCaptureText(String script, String... args) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder();
+        pb.command().add(PYTHON);
+        pb.command().add(script);
+        pb.command().addAll(List.of(args));
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String line, last = null;
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            while ((line = r.readLine()) != null) last = line;
         }
+        if (p.waitFor() != 0) throw new RuntimeException(script + " failed");
+        return last == null ? "" : last.trim();
     }
 
     private ResumeDto toDto(Resume r, AiService.ScoreBundle scores) {
@@ -300,9 +278,7 @@ public class ResumeController {
                 .map(Skill::getName)
                 .collect(Collectors.toSet());
         return new ResumeDto(
-                r.getId(),
-                r.getFileName(),
-                r.getCandidateName(),
+                r.getId(), r.getFileName(), r.getCandidateName(),
                 scores == null ? 0.0 : scores.finalScore(),
                 scores == null ? 0.0 : scores.semanticScore(),
                 scores == null ? 0.0 : scores.skillsScore(),
@@ -310,17 +286,9 @@ public class ResumeController {
                 scores == null ? 0.0 : scores.experienceScore(),
                 scores == null ? 0.0 : scores.overlap(),
                 scores == null ? 0.0 : scores.llmScore(),
-                r.getEmail(),
-                r.getPhone(),
-                r.getSummary(),
-                r.getEducation(),
-                names,
-                r.getStatus()
+                r.getEmail(), r.getPhone(), r.getSummary(), r.getEducation(),
+                names, r.getStatus()
         );
-    }
-
-    private static double opt(Double v) {
-        return v == null ? 0.0 : v;
     }
 
     private static class ParsedResume {

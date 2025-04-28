@@ -37,11 +37,11 @@ import static com.yourname.backend.util.CitationCleaner.strip;
 public class JobController {
 
     private static final Logger log = LoggerFactory.getLogger(JobController.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final JobDescriptionRepository jobRepo;
-    private final StorageService storageService;
-    private final SkillService skillService;
+    private final StorageService           storageService;
+    private final SkillService             skillService;
+    private final ObjectMapper             JSON = new ObjectMapper();
 
     @Value("${python.text-extractor}")
     private String TEXT_EXTRACTOR;
@@ -53,14 +53,12 @@ public class JobController {
     private String PYTHON;
 
     @Autowired
-    public JobController(
-            JobDescriptionRepository jobRepo,
-            StorageService storageService,
-            SkillService skillService
-    ) {
-        this.jobRepo = jobRepo;
+    public JobController(JobDescriptionRepository jobRepo,
+                         StorageService storageService,
+                         SkillService skillService) {
+        this.jobRepo        = jobRepo;
         this.storageService = storageService;
-        this.skillService = skillService;
+        this.skillService   = skillService;
     }
 
     /* ------------------------------------------------------------------
@@ -76,14 +74,17 @@ public class JobController {
         String jdPath = tmp.toAbsolutePath().toString();
 
         // 2) invoke your parser (it can extract text & fields for .txt)
-        String plainTxt = req.getDescriptionText();  // skip extractor here
-        String parsedJson = safeRunPython(JOB_PARSER, jdPath);
-        JsonNode n = JSON.readTree(parsedJson);
+        //    you can skip TEXT_EXTRACTOR if your JOB_PARSER handles raw text directly;
+        //    otherwise uncomment the next line to pull plain text:
+        // String plainTxt = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
+        String plainTxt   = req.getDescriptionText();
+        String parsedJson = runPython(JOB_PARSER, jdPath);
+        JsonNode n        = JSON.readTree(parsedJson);
 
         // 3) extract all fields
-        String summary = n.path("Job Description").asText(null);
-        String category = n.path("Job Category").asText(null);
-        String location = n.path("Location").asText(null);
+        String summary    = n.path("Job Description").asText(null);
+        String category   = n.path("Job Category").asText(null);
+        String location   = n.path("Location").asText(null);
 
         List<String> skillsList = toStringList(n.path("skills"));
         Set<Skill> skills = skillService.fetchOrCreateSkills(
@@ -93,7 +94,7 @@ public class JobController {
                         .collect(Collectors.toSet())
         );
 
-        List<String> reqList = JSON.convertValue(
+        List<String> reqList  = JSON.convertValue(
                 n.path("Requirements").isMissingNode() ? List.of() : n.path("Requirements"),
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)
         );
@@ -114,6 +115,7 @@ public class JobController {
         jd.setResponsibilities(strip(String.join(", ", respList)));
         jd.setParsedJson(parsedJson);
         jd.setFilePath(jdPath);
+        // status defaults to "Active" in your entity
 
         JobDescription saved = jobRepo.save(jd);
 
@@ -122,28 +124,28 @@ public class JobController {
     }
 
     /* ------------------------------------------------------------------
-       File-upload path
+       File‐upload path (unchanged)
        ------------------------------------------------------------------ */
     @PostMapping(path = "/uploadFile",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public JobDescriptionDto uploadFile(
-            @RequestParam("file") @NotNull MultipartFile file,
-            @RequestParam("title") @NotNull String title
-    ) throws Exception {
-        if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
+    public JobDescriptionDto uploadFile(@RequestParam("file")  @NotNull MultipartFile file,
+                                        @RequestParam("title") @NotNull String        title)
+            throws Exception {
+        if (file.isEmpty())
+            throw new IllegalArgumentException("File is empty");
 
-        String jdPath   = storageService.store(file);
-        String plainTxt = safeRunPythonCaptureText(TEXT_EXTRACTOR, jdPath);
-        String parsedJson = safeRunPython(JOB_PARSER, jdPath);
-        JsonNode n = JSON.readTree(parsedJson);
+        String jdPath     = storageService.store(file);
+        String plainTxt   = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
+        String parsedJson = runPython(JOB_PARSER,        jdPath);
+        JsonNode n        = JSON.readTree(parsedJson);
 
         String summary = n.path("Job Description").asText(null);
         List<String> skillsList = toStringList(n.path("skills"));
         Set<Skill> skills = skillService.fetchOrCreateSkills(
                 skillsList.stream().map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet())
         );
-        List<String> reqList = JSON.convertValue(
+        List<String> reqList  = JSON.convertValue(
                 n.path("Requirements").isMissingNode() ? List.of() : n.path("Requirements"),
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)
         );
@@ -183,9 +185,6 @@ public class JobController {
                 .toList();
     }
 
-    /* ------------------------------------------------------------------
-       GET by id
-       ------------------------------------------------------------------ */
     @GetMapping("/{id}")
     public ResponseEntity<JobDescriptionDto> getById(@PathVariable Long id) {
         return jobRepo.findById(id)
@@ -199,12 +198,11 @@ public class JobController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    /* ------------------------------------------------------------------
-       DELETE
-       ------------------------------------------------------------------ */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteById(@PathVariable Long id) {
-        if (!jobRepo.existsById(id)) return ResponseEntity.notFound().build();
+        if (!jobRepo.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
         jobRepo.deleteById(id);
         return ResponseEntity.noContent().build();
     }
@@ -236,12 +234,10 @@ public class JobController {
                 .toList();
     }
 
-    private JobDescriptionDto toDto(
-            JobDescription jd,
-            List<String> skills,
-            List<String> req,
-            List<String> resp
-    ) {
+    private JobDescriptionDto toDto(JobDescription jd,
+                                    List<String> skills,
+                                    List<String> req,
+                                    List<String> resp) {
         return new JobDescriptionDto(
                 jd.getId(),
                 jd.getTitle(),
@@ -255,48 +251,26 @@ public class JobController {
         );
     }
 
-    // Safe wrapper: on failure returns "{}"
-    private String safeRunPython(String script, String... args) {
-        try {
-            return runPython(script, args);
-        } catch (Exception e) {
-            log.warn("Job parser failed on `{}`: {}", script, e.getMessage());
-            return "{}";
-        }
-    }
-
-    // Safe wrapper: on failure returns ""
-    private String safeRunPythonCaptureText(String script, String... args) {
-        try {
-            return runPythonCaptureText(script, args);
-        } catch (Exception e) {
-            log.warn("Text extractor failed on `{}`: {}", script, e.getMessage());
-            return "";
-        }
-    }
-
-    // Original runner (throws on non-zero exit)
-    private String runPython(String script, String... args) throws IOException, InterruptedException {
+    private String runPython(String script, String... args)
+            throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(PYTHON, script);
         pb.command().addAll(List.of(args));
         pb.redirectErrorStream(true);
         Process p = pb.start();
         String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int exit = p.waitFor();
-        if (exit != 0) {
+        if (p.waitFor() != 0) {
+            log.error("{} failed →\n{}", script, out);
             throw new RuntimeException(script + " failed – see logs");
         }
         return out.trim();
     }
 
-    // Original capture-text runner (throws on non-zero exit)
     private String runPythonCaptureText(String script, String... args)
             throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(PYTHON, script);
         pb.command().addAll(List.of(args));
         pb.redirectErrorStream(true);
         Process p = pb.start();
-
         String last = null;
         try (BufferedReader r = new BufferedReader(
                 new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
@@ -304,6 +278,7 @@ public class JobController {
             while ((line = r.readLine()) != null) last = line;
         }
         if (p.waitFor() != 0) {
+            log.error("{} failed (last line: {})", script, last);
             throw new RuntimeException(script + " failed – see logs");
         }
         return last != null ? last : "";
