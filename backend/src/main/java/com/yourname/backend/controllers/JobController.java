@@ -19,7 +19,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,29 +65,35 @@ public class JobController {
 
     /* ------------------------------------------------------------------
        Manual entry via JSON → treat as .txt + parse
-    ------------------------------------------------------------------ */
+       ------------------------------------------------------------------ */
     @PostMapping(path = "/createManual",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public JobDescriptionDto createManual(@RequestBody JobRequest req) throws Exception {
+        // 1) write the raw descriptionText to a temp .txt file
         Path tmp = Files.createTempFile("job-", ".txt");
         Files.writeString(tmp, req.getDescriptionText(), StandardCharsets.UTF_8);
         String jdPath = tmp.toAbsolutePath().toString();
 
-        // no need for TEXT_EXTRACTOR here if JOB_PARSER handles raw text
-        String parsedJson = runPython(JOB_PARSER, jdPath);
+        // 2) invoke your parser (it can extract text & fields for .txt)
+        String plainTxt = req.getDescriptionText();  // skip extractor here
+        String parsedJson = safeRunPython(JOB_PARSER, jdPath);
         JsonNode n = JSON.readTree(parsedJson);
 
+        // 3) extract all fields
         String summary = n.path("Job Description").asText(null);
         String category = n.path("Job Category").asText(null);
         String location = n.path("Location").asText(null);
 
         List<String> skillsList = toStringList(n.path("skills"));
         Set<Skill> skills = skillService.fetchOrCreateSkills(
-                skillsList.stream().map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet())
+                skillsList.stream()
+                        .map(String::trim)
+                        .filter(s -> !s.isBlank())
+                        .collect(Collectors.toSet())
         );
 
-        List<String> reqList  = JSON.convertValue(
+        List<String> reqList = JSON.convertValue(
                 n.path("Requirements").isMissingNode() ? List.of() : n.path("Requirements"),
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)
         );
@@ -94,11 +102,12 @@ public class JobController {
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)
         );
 
+        // 4) build & persist
         JobDescription jd = new JobDescription();
         jd.setTitle(req.getTitle());
         jd.setCategory(category);
         jd.setLocation(location);
-        jd.setDescriptionText(req.getDescriptionText());
+        jd.setDescriptionText(plainTxt);
         jd.setSummary(strip(summary));
         jd.setSkills(skills);
         jd.setRequirements(strip(String.join(", ", reqList)));
@@ -107,12 +116,14 @@ public class JobController {
         jd.setFilePath(jdPath);
 
         JobDescription saved = jobRepo.save(jd);
+
+        // 5) return DTO
         return toDto(saved, skillsList, reqList, respList);
     }
 
     /* ------------------------------------------------------------------
        File-upload path
-    ------------------------------------------------------------------ */
+       ------------------------------------------------------------------ */
     @PostMapping(path = "/uploadFile",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
@@ -120,12 +131,11 @@ public class JobController {
             @RequestParam("file") @NotNull MultipartFile file,
             @RequestParam("title") @NotNull String title
     ) throws Exception {
-        if (file.isEmpty())
-            throw new IllegalArgumentException("File is empty");
+        if (file.isEmpty()) throw new IllegalArgumentException("File is empty");
 
-        String jdPath = storageService.store(file);
-        String plainTxt = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
-        String parsedJson = runPython(JOB_PARSER, jdPath);
+        String jdPath   = storageService.store(file);
+        String plainTxt = safeRunPythonCaptureText(TEXT_EXTRACTOR, jdPath);
+        String parsedJson = safeRunPython(JOB_PARSER, jdPath);
         JsonNode n = JSON.readTree(parsedJson);
 
         String summary = n.path("Job Description").asText(null);
@@ -133,7 +143,7 @@ public class JobController {
         Set<Skill> skills = skillService.fetchOrCreateSkills(
                 skillsList.stream().map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet())
         );
-        List<String> reqList  = JSON.convertValue(
+        List<String> reqList = JSON.convertValue(
                 n.path("Requirements").isMissingNode() ? List.of() : n.path("Requirements"),
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)
         );
@@ -158,6 +168,9 @@ public class JobController {
         return toDto(saved, skillsList, reqList, respList);
     }
 
+    /* ------------------------------------------------------------------
+       GET all jobs
+       ------------------------------------------------------------------ */
     @GetMapping("/all")
     public List<JobDescriptionDto> list() {
         return jobRepo.findAll().stream()
@@ -170,6 +183,9 @@ public class JobController {
                 .toList();
     }
 
+    /* ------------------------------------------------------------------
+       GET by id
+       ------------------------------------------------------------------ */
     @GetMapping("/{id}")
     public ResponseEntity<JobDescriptionDto> getById(@PathVariable Long id) {
         return jobRepo.findById(id)
@@ -183,19 +199,19 @@ public class JobController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    /* ------------------------------------------------------------------
+       DELETE
+       ------------------------------------------------------------------ */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteById(@PathVariable Long id) {
-        if (!jobRepo.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
+        if (!jobRepo.existsById(id)) return ResponseEntity.notFound().build();
         jobRepo.deleteById(id);
         return ResponseEntity.noContent().build();
     }
 
-    //─────────────────────────────────────────────────────────────────────
-    // Helpers
-    //─────────────────────────────────────────────────────────────────────
-
+    /* ==================================================================
+       Helpers
+       ================================================================== */
     private List<String> toStringList(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) return List.of();
         if (node.isArray()) {
@@ -220,10 +236,12 @@ public class JobController {
                 .toList();
     }
 
-    private JobDescriptionDto toDto(JobDescription jd,
-                                    List<String> skills,
-                                    List<String> req,
-                                    List<String> resp) {
+    private JobDescriptionDto toDto(
+            JobDescription jd,
+            List<String> skills,
+            List<String> req,
+            List<String> resp
+    ) {
         return new JobDescriptionDto(
                 jd.getId(),
                 jd.getTitle(),
@@ -237,91 +255,57 @@ public class JobController {
         );
     }
 
-    private String runPython(String script, String... args) throws IOException, InterruptedException {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(PYTHON);
-        cmd.add(new File(script).getAbsolutePath());
-        cmd.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.directory(new File("/app"));
-
-        Process proc = pb.start();
-
-        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
-        Thread tOut = new Thread(() -> {
-            try (InputStream is = proc.getInputStream()) { is.transferTo(outBuf); }
-            catch (IOException ignored) {}
-        });
-        Thread tErr = new Thread(() -> {
-            try (InputStream is = proc.getErrorStream()) { is.transferTo(errBuf); }
-            catch (IOException ignored) {}
-        });
-        tOut.start(); tErr.start();
-
-        int exit = proc.waitFor();
-        tOut.join(); tErr.join();
-
-        String stdout = outBuf.toString(StandardCharsets.UTF_8);
-        String stderr = errBuf.toString(StandardCharsets.UTF_8);
-
-        log.debug("Command {} exited {}. stdout:\\n{}\\nstderr:\\n{}",
-                cmd, exit, stdout, stderr);
-
-        if (exit != 0) {
-            throw new RuntimeException(
-                    String.format("Script %s failed (exit %d)\nstderr:%s", script, exit, stderr)
-            );
+    // Safe wrapper: on failure returns "{}"
+    private String safeRunPython(String script, String... args) {
+        try {
+            return runPython(script, args);
+        } catch (Exception e) {
+            log.warn("Job parser failed on `{}`: {}", script, e.getMessage());
+            return "{}";
         }
-        return stdout.trim();
     }
 
-    private String runPythonCaptureText(String script, String... args) throws IOException, InterruptedException {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(PYTHON);
-        cmd.add(new File(script).getAbsolutePath());
-        cmd.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.directory(new File("/app"));
-
-        Process proc = pb.start();
-
-        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
-        Thread tOut = new Thread(() -> {
-            try (InputStream is = proc.getInputStream()) { is.transferTo(outBuf); }
-            catch (IOException ignored) {}
-        });
-        Thread tErr = new Thread(() -> {
-            try (InputStream is = proc.getErrorStream()) { is.transferTo(errBuf); }
-            catch (IOException ignored) {}
-        });
-        tOut.start(); tErr.start();
-
-        int exit = proc.waitFor();
-        tOut.join(); tErr.join();
-
-        String stdout = outBuf.toString(StandardCharsets.UTF_8);
-        String stderr = errBuf.toString(StandardCharsets.UTF_8);
-
-        log.debug("Command {} exited {}. stdout:\\n{}\\nstderr:\\n{}",
-                cmd, exit, stdout, stderr);
-
-        if (exit != 0) {
-            throw new RuntimeException(
-                    String.format("Script %s failed (exit %d)\nstderr:%s", script, exit, stderr)
-            );
-        }
-
-        // if the extractor returns {"text": "..."} JSON, pull out "text"
+    // Safe wrapper: on failure returns ""
+    private String safeRunPythonCaptureText(String script, String... args) {
         try {
-            JsonNode n = JSON.readTree(stdout);
-            return n.path("text").asText(stdout.trim());
+            return runPythonCaptureText(script, args);
         } catch (Exception e) {
-            log.warn("Failed to parse JSON text from {}, returning raw stdout", script, e);
-            return stdout.trim();
+            log.warn("Text extractor failed on `{}`: {}", script, e.getMessage());
+            return "";
         }
+    }
+
+    // Original runner (throws on non-zero exit)
+    private String runPython(String script, String... args) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(PYTHON, script);
+        pb.command().addAll(List.of(args));
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exit = p.waitFor();
+        if (exit != 0) {
+            throw new RuntimeException(script + " failed – see logs");
+        }
+        return out.trim();
+    }
+
+    // Original capture-text runner (throws on non-zero exit)
+    private String runPythonCaptureText(String script, String... args)
+            throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(PYTHON, script);
+        pb.command().addAll(List.of(args));
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+
+        String last = null;
+        try (BufferedReader r = new BufferedReader(
+                new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = r.readLine()) != null) last = line;
+        }
+        if (p.waitFor() != 0) {
+            throw new RuntimeException(script + " failed – see logs");
+        }
+        return last != null ? last : "";
     }
 }
