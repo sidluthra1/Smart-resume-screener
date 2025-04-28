@@ -6,6 +6,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths; // Using Paths for clarity
@@ -64,5 +65,14 @@ public class StorageService {
 
         // Return the absolute path of the newly stored file as a string
         return destinationPath.toAbsolutePath().toString();
+    }
+
+    public String storeText(String text, String prefix, String suffix) throws IOException {
+        // generate a unique filename
+        String filename = prefix + UUID.randomUUID() + suffix;
+        Path dest = uploadRoot.resolve(filename);
+        // write the text
+        Files.writeString(dest, text, StandardCharsets.UTF_8);
+        return dest.toAbsolutePath().toString();
     }
 }

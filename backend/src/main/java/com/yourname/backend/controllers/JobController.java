@@ -69,9 +69,11 @@ public class JobController {
             produces = MediaType.APPLICATION_JSON_VALUE)
     public JobDescriptionDto createManual(@RequestBody JobRequest req) throws Exception {
         // 1) write the raw descriptionText to a temp .txt file
-        Path tmp = Files.createTempFile("job-", ".txt");
-        Files.writeString(tmp, req.getDescriptionText(), StandardCharsets.UTF_8);
-        String jdPath = tmp.toAbsolutePath().toString();
+        String jdPath = storageService.storeText(
+                req.getDescriptionText(),  // the raw job text
+                "job-",             // prefix
+                ".txt"                     // suffix
+        );
 
         // 2) invoke your parser (it can extract text & fields for .txt)
         //    you can skip TEXT_EXTRACTOR if your JOB_PARSER handles raw text directly;
