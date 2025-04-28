@@ -4,6 +4,8 @@ import os
 import shutil
 import time
 from pathlib import Path
+from reportlab.lib.pagesizes import LETTER
+import docx
 
 try:
     from docx2pdf import convert
@@ -17,7 +19,7 @@ client = OpenAI()
 
 
 def openAIParser(src: Path):
-    pdf_path = ifPDFConvert(src)
+    pdf_path = ensure_pdf(src)
     # upload file for vector search
     with open(pdf_path, "rb") as f:
         up = client.files.create(file=f, purpose="assistants")
@@ -94,49 +96,65 @@ def openAIParser(src: Path):
     resume_parser_schema = json.loads(response.output_text)
     print(json.dumps(resume_parser_schema))
 
-def convert_to_pdf(src: Path, dst: Path = None) -> Path:
+def _convert_docx_to_pdf_text(src: Path, dst: Path) -> None:
     """
-    Converts a .docx to .pdf if needed, otherwise returns the .pdf path.
+    Fallback: extract text from .docx and render to PDF via reportlab
+    """
+    doc = docx.Document(str(src))
+    text = "\n".join(p.text for p in doc.paragraphs)
+
+    c = canvas.Canvas(str(dst), pagesize=LETTER)
+    width, height = LETTER
+    margin, line_height = 72, 12
+    y = height - margin
+    for line in text.splitlines():
+        if y < margin:
+            c.showPage()
+            y = height - margin
+        c.drawString(margin, y, line)
+        y -= line_height
+    c.save()
+
+
+def ensure_pdf(src: Path) -> Path:
+    """
+    Ensure we have a PDF; for .docx use either docx2pdf (if on Windows) or fallback.
     """
     src = src.expanduser().resolve()
-    if not src.exists():
-        raise FileNotFoundError(f"No such file: {src}")
-    if src.suffix.lower() != ".docx":
-        return src  # already PDF
-    if convert is None:
-        raise RuntimeError("docx2pdf not installed; cannot convert .docx to .pdf")
+    suffix = src.suffix.lower()
+    dst = src.with_suffix(".pdf")
 
-    dst = dst.expanduser().resolve() if dst else src.with_suffix(".pdf")
-    convert(str(src), str(dst))
-    if not dst.exists():
-        raise RuntimeError(f"Conversion failed, no output at: {dst}")
-    return dst
+    if suffix == ".pdf":
+        return src
 
-def ifPDFConvert(src: Path) -> Path:
-    """
-    Ensure we have a PDF on disk; convert .docx → .pdf if necessary.
-    """
-    return convert_to_pdf(src) if src.suffix.lower() == ".docx" else src
+    if suffix == ".docx":
+        try:
+            from docx2pdf import convert as convert_win
+        except ImportError:
+            convert_win = None
+
+        if convert_win:
+            convert_win(str(src), str(dst))
+        else:
+            _convert_docx_to_pdf_text(src, dst)
+        if not dst.exists():
+            raise RuntimeError(f"Conversion failed, no output at: {dst}")
+        return dst
+
+    raise ValueError(f"Unsupported extension '{src.suffix}'; only .docx or .pdf allowed")
+
 
 def main():
     if len(sys.argv) != 2:
         print("Usage: ResumeParser.py <path-to-resume.pdf|.docx>", file=sys.stderr)
         sys.exit(1)
     src = Path(sys.argv[1])
+    if not src.exists():
+        print(f"No such file: {src}", file=sys.stderr)
+        sys.exit(1)
     openAIParser(src)
 
-# ---------- CLI --------------------------------------------------------
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.stderr.write("Usage: ResumeParser.py <path-to-resume.pdf|.docx>\n")
-        sys.exit(1)
-
-    input_path = Path(sys.argv[1])
-    if not input_path.exists():
-        sys.stderr.write(f"No such file: {input_path}\n")
-        sys.exit(1)
-
-    pdf = convert_to_pdf(input_path)
-    openAIParser(pdf)
+    main()
 
 
