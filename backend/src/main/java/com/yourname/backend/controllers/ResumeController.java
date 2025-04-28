@@ -44,6 +44,7 @@ public class ResumeController {
     private final StorageService storageService;
     private final AiService aiService;
     private final SkillService skillService;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${python.resume-parser}")
     private String RESUME_PARSER;
@@ -59,8 +60,6 @@ public class ResumeController {
 
     @Value("${ai.python-executable:python3}")
     private String PYTHON;
-
-    private final ObjectMapper mapper = new ObjectMapper();
 
     @Autowired
     public ResumeController(
@@ -271,88 +270,33 @@ public class ResumeController {
         cmd.add(PYTHON);
         cmd.add(new File(script).getAbsolutePath());
         cmd.addAll(Arrays.asList(args));
-
         ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.directory(new File("/app"));
-
         Process p = pb.start();
-        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
 
-        Thread to = new Thread(() -> {
-            try (InputStream is = p.getInputStream()) { is.transferTo(outBuf); }
-            catch (IOException ignored) {}
-        });
-        Thread te = new Thread(() -> {
-            try (InputStream is = p.getErrorStream()) { is.transferTo(errBuf); }
-            catch (IOException ignored) {}
-        });
-        to.start(); te.start();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        p.getInputStream().transferTo(out);
+        p.getErrorStream().transferTo(err);
 
         int exit = p.waitFor();
-        to.join(); te.join();
-
-        String stdout = outBuf.toString(StandardCharsets.UTF_8);
-        String stderr = errBuf.toString(StandardCharsets.UTF_8);
-
-        log.debug("Command {} exited {}. stdout:\n{} stderr:\n{}", cmd, exit, stdout, stderr);
-
+        log.debug("runPython `{}` exited {}. stderr:\n{}", script, exit, err);
         if (exit != 0) {
-            throw new RuntimeException(
-                    String.format("Script %s failed (exit %d)\nstderr:%s", script, exit, stderr)
-            );
+            throw new RuntimeException("Script " + script + " failed – see logs");
         }
-        return stdout.trim();
+        return out.toString(StandardCharsets.UTF_8).trim();
     }
 
-    private String runPythonCaptureText(String script, String... args) throws IOException, InterruptedException {
-        List<String> cmd = new ArrayList<>();
-        cmd.add(PYTHON);
-        cmd.add(new File(script).getAbsolutePath());
-        cmd.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.directory(new File("/app"));
-
-        Process p = pb.start();
-        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
-        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
-
-        Thread to = new Thread(() -> {
-            try (InputStream is = p.getInputStream()) { is.transferTo(outBuf); }
-            catch (IOException ignored) {}
-        });
-        Thread te = new Thread(() -> {
-            try (InputStream is = p.getErrorStream()) { is.transferTo(errBuf); }
-            catch (IOException ignored) {}
-        });
-        to.start(); te.start();
-
-        int exit = p.waitFor();
-        to.join(); te.join();
-
-        String stdout = outBuf.toString(StandardCharsets.UTF_8);
-        String stderr = errBuf.toString(StandardCharsets.UTF_8);
-
-        log.debug("Command {} exited {}. stdout:\n{} stderr:\n{}", cmd, exit, stdout, stderr);
-
-        if (exit != 0) {
-            throw new RuntimeException(
-                    String.format("Script %s failed (exit %d)\nstderr:%s", script, exit, stderr)
-            );
-        }
-
-        // if extractor returns JSON with {"text": "..."}
+    private String runPythonCaptureText(String script, String... args) {
         try {
-            JsonNode n = JSON.readTree(stdout);
-            if (n.has("text")) return n.get("text").asText();
-        } catch (Exception ignored) {}
-
-        return stdout.trim();
+            return runPython(script, args);
+        } catch (Exception e) {
+            log.warn("Text extractor failed on `{}`: {}", script, e.getMessage());
+            return "";
+        }
     }
 
     private ResumeDto toDto(Resume r, AiService.ScoreBundle scores) {
-        var names = r.getSkills().stream()
+        Set<String> names = r.getSkills().stream()
                 .map(Skill::getName)
                 .collect(Collectors.toSet());
         return new ResumeDto(
