@@ -113,8 +113,8 @@ def main():
 
 if __name__ == "__main__":
     try:
-            main()
-        except Exception:
-            # print full Python stack trace to stderr (redirected into your Spring logs)
-            traceback.print_exc(file=sys.stderr)
-            sys.exit(1)
+        main()
+    except Exception:
+        # print full Python stack trace to stderr (redirected into your Spring logs)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
