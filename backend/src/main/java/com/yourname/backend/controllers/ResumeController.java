@@ -9,6 +9,7 @@ import com.yourname.backend.repositories.ResumeRepository;
 import com.yourname.backend.services.AiService;
 import com.yourname.backend.services.SkillService;
 import com.yourname.backend.storage.StorageService;
+import com.yourname.backend.util.CitationCleaner;
 import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static com.yourname.backend.util.CitationCleaner.strip;
 
 @RestController
 @RequestMapping("/resume")
@@ -168,10 +171,10 @@ public class ResumeController {
         r.setSize(file.getSize());
         applyScores(r, scores);          // ← granular fields set here
         if (jobId != null) r.setLastScoredJobId(jobId);
-        r.setEmail(parsedRes.email);
-        r.setPhone(parsedRes.phone_number);
-        r.setSummary(parsedRes.summary);
-        r.setEducation(parsedRes.education);
+        r.setEmail(strip(parsedRes.email));
+        r.setPhone(strip(parsedRes.phone_number));
+        r.setSummary(strip(parsedRes.summary));
+        r.setEducation(strip(parsedRes.education));
         r.setStatus("New");
 
         // skills & experiences
