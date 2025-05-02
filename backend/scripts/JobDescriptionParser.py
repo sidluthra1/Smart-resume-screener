@@ -30,7 +30,7 @@ def openAIParser(src: Path):
         time.sleep(1)
 
     response = client.responses.create(
-        model="o4-mini",  # or another model you prefer
+        model="o3-mini",  # or another model you prefer
         input="Please parse the job for all the information available from the attached PDF and return EXACTLY the JSON via the function. The summary property should include 1 summarizing sentence about the job. You are also to interperit the Job Category as well. For the skills section, please limit to 15 skills max. You may only add 5 interperited skills IF there is a explicit skills section and there should be a couple soft skills inlcuded. For any properties that are not available in the resume, please just respond with N/A.",
         tools=[
             {

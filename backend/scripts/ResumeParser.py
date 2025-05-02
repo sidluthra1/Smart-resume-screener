@@ -39,7 +39,7 @@ def openAIParser(src: Path):
         time.sleep(1)
 
     response = client.responses.create(
-        model="o4-mini",  # or another model you prefer
+        model="o3-mini",  # or another model you prefer
         input="Please parse the resume for all the information available from the attached PDF and return EXACTLY the JSON via the function. The summary property should include 1 summarizing sentence about the candidate on the resume. For any properties that are not available in the resume, please just respond with N/A.",
         tools=[
             {
