@@ -15,7 +15,7 @@ except ImportError:
 
 from openai import OpenAI
 
-# initialize OpenAI client (make sure OPENAI_API_KEY is set in your env)
+# initialize OpenAI clients (make sure OPENAI_API_KEY is set in your env)
 client = OpenAI()
 
 
