@@ -86,7 +86,7 @@ export default function AddJobModal({ open, onOpenChange, onSuccess }) {
                 </div>
 
                 {mode === "manual" ? (
-                    // manual textarea
+                    // manual text area
                     <div>
                         <label className="block text-sm font-medium">Description</label>
                         <textarea

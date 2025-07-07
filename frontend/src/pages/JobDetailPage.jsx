@@ -1,4 +1,3 @@
-// src/pages/JobDetailPage.jsx
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Edit, Trash2 } from 'lucide-react'
@@ -25,12 +24,9 @@ export default function JobDetailPage() {
 
     if (!job) return <div className="p-6">Loading…</div>
 
-    // Determine “active” status (posted within last 30 days)
     const dateStr  = job.postedAt ?? job.uploadDate ?? new Date().toISOString()
     const posted   = parseISO(dateStr)
     const isActive = (Date.now() - posted.getTime()) / 86400000 < 30
-
-    // Helper: normalize string or array into cleaned, capitalized list items
     const toList = val => {
         let arr = []
         if (Array.isArray(val)) {
@@ -44,7 +40,6 @@ export default function JobDetailPage() {
             .map(item => item.charAt(0).toUpperCase() + item.slice(1))     // capitalize
     }
 
-    // Delete handler
     const handleDelete = async () => {
            if (!window.confirm('Delete this job?')) return
            try {
@@ -52,7 +47,6 @@ export default function JobDetailPage() {
                  navigate('/jobs', { replace: true })
                } catch (err) {
                  console.error(err)
-                 // optionally show an error message in your UI
                }
          }
 

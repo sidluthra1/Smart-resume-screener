@@ -1,4 +1,3 @@
-// src/main/java/com/yourname/backend/entities/Skill.java
 package com.yourname.backend.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -19,11 +18,9 @@ public class Skill {
     @JsonIgnore
     private Set<Resume> resumes = new HashSet<>();
 
-    // constructors
     public Skill() {}
     public Skill(String name) { this.name = name; }
 
-    // getters & setters
     public Long getId() { return id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

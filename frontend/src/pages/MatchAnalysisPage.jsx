@@ -1,4 +1,3 @@
-// src/pages/MatchAnalysisPage.jsx  – fixed to call /analysis endpoint
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/axios";
@@ -25,7 +24,6 @@ export default function MatchAnalysisPage() {
     useEffect(() => {
         if (!resumeId) { setError("Missing resumeId"); return; }
 
-        // 1️⃣ fetch analysis → gives us jobId (if scored)
         api.get(`/resume/${resumeId}/analysis`)
             .then(res => {
                 setResume(res.data);

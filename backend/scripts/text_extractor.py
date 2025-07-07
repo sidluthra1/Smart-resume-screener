@@ -11,7 +11,7 @@ def extract_text(path: str) -> str:
     elif p.suffix.lower() in ('.docx',):
         doc = docx.Document(path)
         return "\n".join(para.text for para in doc.paragraphs)
-    elif p.suffix.lower() == '.txt':          # <-- add this block
+    elif p.suffix.lower() == '.txt':
         return p.read_text(encoding='utf-8')
     else:
         raise ValueError(f"Unsupported file type: {p.suffix}")
@@ -22,5 +22,4 @@ if __name__ == "__main__":
     import json
 
     text = extract_text(sys.argv[1])
-    # Print JSON so downstream can consume
     print(json.dumps({"text": text}))

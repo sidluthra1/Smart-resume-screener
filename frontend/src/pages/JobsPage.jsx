@@ -1,4 +1,3 @@
-// src/pages/JobsPage.jsx
 import React, { useState, useEffect, useMemo } from 'react'
 import { Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'

@@ -1,4 +1,3 @@
-// src/main/java/com/yourname/backend/dto/JobRequest.java
 package com.yourname.backend.dto;
 
 public class JobRequest {

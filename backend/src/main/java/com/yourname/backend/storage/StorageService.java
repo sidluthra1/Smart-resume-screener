@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths; // Using Paths for clarity
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
@@ -58,12 +58,7 @@ public class StorageService {
 
         // Resolve the destination path against the root upload directory
         Path destinationPath = this.uploadRoot.resolve(uniqueFilename);
-
-        // Copy the file's InputStream to the destination path.
-        // REPLACE_EXISTING will overwrite if a file with the same UUID somehow exists (highly unlikely).
         Files.copy(file.getInputStream(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
-
-        // Return the absolute path of the newly stored file as a string
         return destinationPath.toAbsolutePath().toString();
     }
 

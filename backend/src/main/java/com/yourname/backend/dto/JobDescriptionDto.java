@@ -1,4 +1,3 @@
-// src/main/java/com/yourname/backend/dto/JobDescriptionDto.java
 package com.yourname.backend.dto;
 
 import java.util.List;

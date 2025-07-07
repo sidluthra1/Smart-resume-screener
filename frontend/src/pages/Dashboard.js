@@ -1,4 +1,3 @@
-// src/pages/Dashboard.js
 import React, { useState, useEffect, useRef } from "react";
 import api from "../api/axios";
 import { Loader2 } from "lucide-react";
@@ -9,17 +8,13 @@ export default function Dashboard() {
     const [resumes, setResumes] = useState([]);
     const [activeTab, setActiveTab] = useState("upload"); // "upload" | "select"
 
-    // upload tab state
     const [file, setFile] = useState(null);
     const [candidateName, setCandidateName] = useState("");
 
-    // select tab state
     const [selectedResumeId, setSelectedResumeId] = useState("");
 
-    // common job picker
     const [selectedJobId, setSelectedJobId] = useState("");
 
-    // messaging / loading
     const [msg, setMsg] = useState("");
     const [isLoading, setIsLoading] = useState(false);
 
@@ -44,13 +39,11 @@ export default function Dashboard() {
         })();
     }, []);
 
-    // common job change
     const onJobChange = (e) => {
         setSelectedJobId(e.target.value);
         setMsg("");
     };
 
-    // upload tab handlers
     const handleFileChange = (e) => {
         setFile(e.target.files[0]);
         setMsg("");
@@ -94,7 +87,6 @@ export default function Dashboard() {
         }
     };
 
-    // select tab handler
     const handleScore = async (e) => {
         e.preventDefault();
         setMsg("");

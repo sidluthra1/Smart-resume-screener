@@ -1,4 +1,3 @@
-// src/pages/Signup.js
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../api/axios";
@@ -23,7 +22,6 @@ export default function Signup() {
 
         try {
             await api.post("/auth/signup", { name, email, password });
-            // optional: auto‑login after signup
             const { data } = await api.post("/auth/login", { email, password });
             localStorage.setItem("jwt", data.token);
             navigate("/dashboard");

@@ -6,7 +6,7 @@ import com.yourname.backend.services.AuthService;
 import com.yourname.backend.util.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.fasterxml.jackson.annotation.JsonProperty;
+
 
 
 @RestController
@@ -21,7 +21,6 @@ public class AuthController {
         this.jwtUtil = jwtUtil;
     }
 
-    // simple DTO for both signup and login
     public static class AuthRequest {
         public String email;
         public String password;
@@ -38,7 +37,6 @@ public class AuthController {
             User u = authService.registerUser(req.email, req.password, "HR");
             return ResponseEntity.ok("User created with ID: " + u.getId());
         } catch (DuplicateUserException e) {
-            // now you’ll see a 400 and the exception message
             return ResponseEntity
                     .badRequest()
                     .body(e.getMessage());

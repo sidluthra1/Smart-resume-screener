@@ -88,7 +88,7 @@ public class OpenAiHelper {
 
         } catch (Exception e) {
             log.error("OpenAI call failed – returning 0. Error: {}", e.getMessage());
-            return 0.0;   // graceful fallback
+            return 0.0;
         }
     }
 }

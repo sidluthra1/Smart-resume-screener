@@ -47,16 +47,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        // for debugging you can wildcard everything, or lock it down to http://localhost:3000
-        config.setAllowedOriginPatterns(List.of("*")); // ← allow any origin
+        config.setAllowedOriginPatterns(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        // make sure this really covers your signup endpoint:
         source.registerCorsConfiguration("/auth/**", config);
-        // if you want it everywhere:
         source.registerCorsConfiguration("/**", config);
         return source;
     }

@@ -1,4 +1,3 @@
-// src/main/java/com/yourname/backend/entities/JobDescription.java
 package com.yourname.backend.entities;
 
 import jakarta.persistence.*;
@@ -17,8 +16,8 @@ public class JobDescription {
 
     private String title;
 
-    private String category;     // new (nullable)
-    private String location;     // new (nullable)
+    private String category;
+    private String location;
 
     @Column(columnDefinition = "text")
     private String descriptionText;
@@ -26,7 +25,7 @@ public class JobDescription {
     @Column(nullable = true)
     private String filePath;
 
-    @Column(length = 2000)          // plenty for a paragraph
+    @Column(length = 2000)
     private String summary;
 
     /* ------------------------------  Skills  ------------------------------ */
@@ -44,7 +43,7 @@ public class JobDescription {
     private String responsibilities;
 
     /* (optional) raw JSON that came back from your OpenAI parser */
-    @Column(columnDefinition = "jsonb")    // if you use Postgres
+    @Column(columnDefinition = "jsonb")
     private String parsedJson;
 
     @Column(nullable = false)

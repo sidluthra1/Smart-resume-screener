@@ -9,7 +9,6 @@ import com.yourname.backend.repositories.ResumeRepository;
 import com.yourname.backend.services.AiService;
 import com.yourname.backend.services.SkillService;
 import com.yourname.backend.storage.StorageService;
-import com.yourname.backend.util.CitationCleaner;
 import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,7 +98,6 @@ public class ResumeController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         r.setStatus(newStatus);
         Resume saved = resumeRepo.save(r);
-        // return updated DTO
         return ResponseEntity.ok(toDto(saved, null));
     }
 
@@ -147,14 +145,12 @@ public class ResumeController {
 
         String resumePath = storageService.store(file);
 
-        // ── 1) Parse résumé
         String parsedResumeJson = runPython(RESUME_PARSER, resumePath);
         ParsedResume parsedRes  = mapper.readValue(parsedResumeJson, ParsedResume.class);
         String resumePlainTxt   = runPythonCaptureText(TEXT_EXTRACTOR, resumePath);
 
         AiService.ScoreBundle scores = null;
         if (jobId != null) {
-            // ── 2) Parse job + run scoring
             JobDescription jd = jobRepo.findById(jobId)
                     .orElseThrow(() -> new IllegalArgumentException("Invalid jobId " + jobId));
             Path tmp = Files.createTempFile("job-", ".txt");
@@ -165,11 +161,10 @@ public class ResumeController {
             scores = aiService.scoreResume(resumePlainTxt, jd.getDescriptionText(), parsedResumeJson, parsedJobJson, overlap);
         }
 
-        // ── 3) Build entity & persist
         Resume r = new Resume(file.getOriginalFilename(), candidateName, resumePath);
         r.setContentType(ct);
         r.setSize(file.getSize());
-        applyScores(r, scores);          // ← granular fields set here
+        applyScores(r, scores);
         if (jobId != null) r.setLastScoredJobId(jobId);
         r.setEmail(strip(parsedRes.email));
         r.setPhone(strip(parsedRes.phone_number));
@@ -177,7 +172,6 @@ public class ResumeController {
         r.setEducation(strip(parsedRes.education));
         r.setStatus("New");
 
-        // skills & experiences
         Set<String> skillNames = Arrays.stream(parsedRes.skills.split(","))
                 .map(String::trim).filter(s -> !s.isBlank()).collect(Collectors.toSet());
         r.setSkills(skillService.fetchOrCreateSkills(skillNames));
@@ -225,7 +219,7 @@ public class ResumeController {
         AiService.ScoreBundle scores = aiService.scoreResume(
                 resumePlainTxt, jd.getDescriptionText(), parsedResumeJson, parsedJobJson, overlapScore);
 
-        applyScores(r, scores);                    // ← granular fields updated here
+        applyScores(r, scores);
         r.setLastScoredJobId(jobId);
         resumeRepo.save(r);
         return ResponseEntity.ok(toDto(r, scores));

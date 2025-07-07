@@ -22,7 +22,6 @@ export default function CandidatesPage() {
     const [activeTab, setActiveTab] = useState("All");
     const [openAdd, setOpenAdd] = useState(false);
 
-    // 1️⃣ Fetch on mount (with auth header automatically applied)
     useEffect(() => {
         api
             .get("/resume/all")
@@ -30,7 +29,6 @@ export default function CandidatesPage() {
             .catch(console.error);
     }, []);
 
-    // 2️⃣ Filter & search
     const filtered = useMemo(() => {
         return candidates
             .filter((c) => {
@@ -46,7 +44,6 @@ export default function CandidatesPage() {
             .sort((a, b) => a.candidateName.localeCompare(b.candidateName));
     }, [candidates, search, activeTab]);
 
-    // 3️⃣ Refresh after add
     const refetch = () => {
         api
             .get("/resume/all")

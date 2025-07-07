@@ -1,4 +1,3 @@
-// src/components/ui/card.jsx
 import React from 'react'
 
 export function Card({ children, className = '' }) {

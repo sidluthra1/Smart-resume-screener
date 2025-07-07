@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+
 
 import sys
-import re # Keep re for cleaning text
+import re
 import pdfplumber
 import docx
 import json
-from sentence_transformers import SentenceTransformer, util # Import necessary components
-import torch # Or tensorflow if you installed that backend
+from sentence_transformers import SentenceTransformer, util
+import torch
 import traceback
 
 
@@ -16,11 +16,9 @@ def extract_text(path):
         text = ""
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
-                # Handle cases where extract_text might return None
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
-        # Simple cleaning: replace multiple whitespace chars with a single space
         text = re.sub(r'\s+', ' ', text).strip()
         return text
     elif path.lower().endswith(".docx"):
@@ -28,7 +26,6 @@ def extract_text(path):
             doc = docx.Document(path)
             full_text = [p.text for p in doc.paragraphs]
             text = "\n".join(full_text)
-            # Simple cleaning: replace multiple whitespace chars with a single space
             text = re.sub(r'\s+', ' ', text).strip()
             return text
         except Exception as e:
@@ -38,11 +35,6 @@ def extract_text(path):
         raise ValueError(f"Unsupported file type: {path}")
 
 
-# REMOVE the jaccard_score function - it's no longer needed
-# def jaccard_score(a, b):
-#    # ... (old code removed) ...
-
-# --- ADD the new function using sentence-transformers ---
 def calculate_semantic_similarity(text_a, text_b, model):
     """Calculates cosine similarity between text embeddings."""
     try:
@@ -55,7 +47,6 @@ def calculate_semantic_similarity(text_a, text_b, model):
         similarity = cosine_scores.item() # Get the float value from the tensor
 
         # Scale similarity score from ~[0, 1] range to [0, 100]
-        # Clamp the value between 0 and 1 before scaling
         scaled_score = max(0.0, min(1.0, similarity)) * 100.0
 
         return scaled_score
@@ -63,7 +54,6 @@ def calculate_semantic_similarity(text_a, text_b, model):
     except Exception as e:
         # Handle potential errors during encoding or similarity calculation
         print(f"Error during semantic similarity calculation: {e}", file=sys.stderr)
-        # Return a default low score or re-raise the exception
         return 0.0
 
 
@@ -75,9 +65,6 @@ def main():
     resume_path, job_path = sys.argv[1], sys.argv[2]
 
     try:
-        # --- Initialize the model ONCE ---
-        # Using a pre-trained model effective for semantic similarity tasks.
-        # 'all-MiniLM-L6-v2' is lightweight and fast.
         model = SentenceTransformer('all-MiniLM-L6-v2')
 
         # Extract text (function now includes basic cleaning)
@@ -92,8 +79,7 @@ def main():
              print(f"Error: Empty content found in resume or job description.", file=sys.stderr)
              score = 0.0
         else:
-            # --- Calculate semantic similarity score ---
-            score = calculate_semantic_similarity(resume_txt, job_txt, model) # Use new function
+            score = calculate_semantic_similarity(resume_txt, job_txt, model)
 
         # Output JSON
         print(json.dumps({"Overlap": round(score, 2)}))

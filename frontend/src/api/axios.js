@@ -1,4 +1,3 @@
-// src/api/axios.js
 import axios from "axios";
 
 // Create an Axios instance with a base URL pointing to your Spring Boot backend

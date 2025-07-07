@@ -3,11 +3,9 @@ from pathlib import Path
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer, util
 
-# ---------- weights ------------------------------------------------------
-W_SEM, W_SK, W_ED, W_EX, W_OV, W_LLM = 0.05, 0.15, 0.25, 0.15, 0.05, 0.35
-# -------------------------------------------------------------------------
 
-# ---------- helpers ------------------------------------------------------
+W_SEM, W_SK, W_ED, W_EX, W_OV, W_LLM = 0.05, 0.15, 0.25, 0.15, 0.05, 0.35
+
 def read_stdin_json() -> dict:
     try:
         data = sys.stdin.read()
@@ -24,7 +22,6 @@ def semantic_score(r_txt: str, j_txt: str, model) -> float:
     emb_j = model.encode(j_txt, convert_to_tensor=True)
     cos   = util.cos_sim(emb_r, emb_j).item()         # −1…1
     return max(0.0, min(1.0, cos))*100                # 0…100
-# -------------------------------------------------------------------------
 
 def main() -> None:
     payload = read_stdin_json()

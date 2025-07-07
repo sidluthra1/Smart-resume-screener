@@ -1,4 +1,3 @@
-// src/main/java/com/yourname/backend/repositories/SkillRepository.java
 package com.yourname.backend.repositories;
 
 import com.yourname.backend.entities.Skill;

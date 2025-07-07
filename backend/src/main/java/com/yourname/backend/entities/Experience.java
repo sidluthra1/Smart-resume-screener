@@ -1,4 +1,3 @@
-// src/main/java/com/yourname/backend/entities/Experience.java
 package com.yourname.backend.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -14,12 +13,9 @@ public class Experience {
     @ManyToOne @JoinColumn(name = "resume_id", nullable = false)
     private Resume resume;
 
-    // new:
     @Column(columnDefinition = "text")
     private String description;
 
-    // (you can keep role/company/years if you later want to split them out,
-    //  but for now we'll store the raw parser output here)
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }

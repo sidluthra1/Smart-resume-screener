@@ -1,4 +1,3 @@
-// src/components/ui/dialog.jsx
 import React from 'react'
 
 export function Dialog({ open, onOpenChange, children }) {

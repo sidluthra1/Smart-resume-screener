@@ -15,7 +15,6 @@ except ImportError:
 
 from openai import OpenAI
 
-# initialize OpenAI clients (make sure OPENAI_API_KEY is set in your env)
 client = OpenAI()
 
 
@@ -39,7 +38,7 @@ def openAIParser(src: Path):
         time.sleep(1)
 
     response = client.responses.create(
-        model="o3-mini",  # or another model you prefer
+        model="o3-mini",
         input="Please parse the resume for all the information available from the attached PDF and return EXACTLY the JSON via the function. The summary property should include 1 summarizing sentence about the candidate on the resume. For any properties that are not available in the resume, please just respond with N/A.",
         tools=[
             {
@@ -93,7 +92,6 @@ def openAIParser(src: Path):
         }
 
     )
-    # 4) Pull out the arguments and print
     resume_parser_schema = json.loads(response.output_text)
     print(json.dumps(resume_parser_schema))
 
@@ -129,7 +127,6 @@ def ensure_pdf(src: Path) -> Path:
         return src
 
     if suffix == ".docx":
-        # 1) Try LibreOffice headless conversion
         try:
             subprocess.run(
                 ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(dst.parent), str(src)],
@@ -140,7 +137,6 @@ def ensure_pdf(src: Path) -> Path:
         except Exception:
             pass
 
-        # 2) Try docx2pdf if available (Windows/Word)
         if convert:
             try:
                 convert(str(src), str(dst))
@@ -149,7 +145,6 @@ def ensure_pdf(src: Path) -> Path:
             except Exception:
                 pass
 
-        # 3) Pure-Python fallback
         _convert_docx_to_pdf_text(src, dst)
         if dst.exists():
             return dst

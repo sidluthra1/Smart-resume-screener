@@ -61,29 +61,20 @@ public class JobController {
         this.skillService   = skillService;
     }
 
-    /* ------------------------------------------------------------------
-       Manual entry via JSON → treat as .txt + parse
-       ------------------------------------------------------------------ */
     @PostMapping(path = "/createManual",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public JobDescriptionDto createManual(@RequestBody JobRequest req) throws Exception {
-        // 1) write the raw descriptionText to a temp .txt file
         String jdPath = storageService.storeText(
                 req.getDescriptionText(),  // the raw job text
                 "job-",             // prefix
                 ".txt"                     // suffix
         );
 
-        // 2) invoke your parser (it can extract text & fields for .txt)
-        //    you can skip TEXT_EXTRACTOR if your JOB_PARSER handles raw text directly;
-        //    otherwise uncomment the next line to pull plain text:
-        // String plainTxt = runPythonCaptureText(TEXT_EXTRACTOR, jdPath);
         String plainTxt   = req.getDescriptionText();
         String parsedJson = runPython(JOB_PARSER, jdPath);
         JsonNode n        = JSON.readTree(parsedJson);
 
-        // 3) extract all fields
         String summary    = n.path("Job Description").asText(null);
         String category   = n.path("Job Category").asText(null);
         String location   = n.path("Location").asText(null);
@@ -105,7 +96,6 @@ public class JobController {
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)
         );
 
-        // 4) build & persist
         JobDescription jd = new JobDescription();
         jd.setTitle(req.getTitle());
         jd.setCategory(category);
@@ -121,13 +111,9 @@ public class JobController {
 
         JobDescription saved = jobRepo.save(jd);
 
-        // 5) return DTO
         return toDto(saved, skillsList, reqList, respList);
     }
 
-    /* ------------------------------------------------------------------
-       File‐upload path (unchanged)
-       ------------------------------------------------------------------ */
     @PostMapping(path = "/uploadFile",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
@@ -172,9 +158,6 @@ public class JobController {
         return toDto(saved, skillsList, reqList, respList);
     }
 
-    /* ------------------------------------------------------------------
-       GET all jobs
-       ------------------------------------------------------------------ */
     @GetMapping("/all")
     public List<JobDescriptionDto> list() {
         return jobRepo.findAll().stream()
@@ -209,9 +192,6 @@ public class JobController {
         return ResponseEntity.noContent().build();
     }
 
-    /* ==================================================================
-       Helpers
-       ================================================================== */
     private List<String> toStringList(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) return List.of();
         if (node.isArray()) {

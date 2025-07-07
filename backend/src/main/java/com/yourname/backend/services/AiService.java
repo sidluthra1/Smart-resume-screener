@@ -1,5 +1,4 @@
 package com.yourname.backend.services;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -18,18 +17,15 @@ public class AiService {
     private static final Logger log = LoggerFactory.getLogger(AiService.class);
     private final ObjectMapper mapper = new ObjectMapper();
 
-    /** path to the Python interpreter inside your venv (defaults to “python3”) */
     @Value("${ai.python-executable:python3}")
     private String PYTHON;
 
-    /** relative path (or absolute) to score_resumes.py */
     @Value("${python.scorer}")
     private String SCORER_SCRIPT;
 
     @Autowired
     private OpenAiHelper openAiHelper;
 
-    /** Immutable bundle of all the partial + final scores we care about. */
     public static record ScoreBundle(
             double finalScore,
             double semanticScore,
@@ -57,15 +53,8 @@ public class AiService {
             double overlapScore
     ) throws IOException, InterruptedException {
 
-        /* --------------------------------------------------------------
-           1) Ask the LLM once – expensive, so do it *before* the Python call
-        -------------------------------------------------------------- */
         double llmScore = openAiHelper.compareResumeAndJob(parsedResumeJson, parsedJobJson);
         log.debug("OpenAI returned LLMscore={}", llmScore);
-
-        /* --------------------------------------------------------------
-           2) Build JSON payload for score_resumes.py
-        -------------------------------------------------------------- */
         ObjectNode root = mapper.createObjectNode();
         root.put("Overlap",   overlapScore);
         root.put("LLMscore",  llmScore);
@@ -75,20 +64,15 @@ public class AiService {
         root.set("job_json",    mapper.readTree(parsedJobJson));
         String input = mapper.writeValueAsString(root);
 
-        /* --------------------------------------------------------------
-           3) Launch the scorer script
-        -------------------------------------------------------------- */
         ProcessBuilder pb = new ProcessBuilder(PYTHON, SCORER_SCRIPT);
         pb.redirectErrorStream(true);
         Process p = pb.start();
 
-        /* 4) Pipe the JSON into STDIN */
         try (BufferedWriter w = new BufferedWriter(
                 new OutputStreamWriter(p.getOutputStream(), StandardCharsets.UTF_8))) {
             w.write(input);
         }
 
-        /* 5) Capture the *last* line printed (script should print one JSON line) */
         String lastLine = null;
         try (BufferedReader r = new BufferedReader(
                 new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
@@ -104,9 +88,6 @@ public class AiService {
             throw new RuntimeException("Scorer script failed – see logs.");
         }
 
-        /* --------------------------------------------------------------
-           6) Parse the JSON and build the bundle
-        -------------------------------------------------------------- */
         JsonNode n = mapper.readTree(lastLine);
         double finalScore      = n.get("FinalScore").asDouble();
         double semanticScore   = n.get("SemanticScore").asDouble();
@@ -122,8 +103,8 @@ public class AiService {
                 skillsScore,
                 educationScore,
                 experienceScore,
-                overlapScore,   // ← use the value we ALREADY have
-                llmScore        // ← ditto
+                overlapScore,
+                llmScore
         );
     }
 }
